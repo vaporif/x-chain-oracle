@@ -1,0 +1,15 @@
+[grpc]
+port = 50051
+
+[enricher]
+workers = 4
+
+[chainlink]
+cache_ttl = "30s"
+
+[chains.ethereum]
+rpc_url = "wss://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}"
+mode = "websocket"
+
+[chains.solana]
+rpc_url = "wss://api.mainnet-beta.solana.com"

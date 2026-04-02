@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package oracle;
+
+option go_package = "github.com/vaporif/x-chain-oracle/proto";
+
+service OracleService {
+    rpc SubscribeSignals(SignalFilter) returns (stream Signal);
+    rpc GetStatus(StatusRequest) returns (StatusResponse);
+}
+
+message SignalFilter {
+    repeated string signal_types = 1;
+    repeated string source_chains = 2;
+    repeated string destination_chains = 3;
+    repeated string tokens = 4;
+    double min_confidence = 5;
+}
+
+message Signal {
+    string id = 1;
+    string signal_type = 2;
+    string source_chain = 3;
+    string destination_chain = 4;
+    string token = 5;
+    string amount = 6;
+    double amount_usd = 7;
+    int64 detected_at = 8;
+    int64 estimated_action_time = 9;
+    double confidence = 10;
+    map<string, string> metadata = 11;
+}
+
+message StatusRequest {}
+
+message ChainStatus {
+    string chain_id = 1;
+    bool connected = 2;
+    uint64 last_block = 3;
+    int64 last_event_at = 4;
+}
+
+message StatusResponse {
+    repeated ChainStatus chains = 1;
+    int64 uptime_seconds = 2;
+    int64 signals_emitted = 3;
+}

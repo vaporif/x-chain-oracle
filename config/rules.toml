@@ -1,0 +1,24 @@
+[[rules]]
+name = "large_bridge_deposit_solana"
+trigger = "bridge_deposit"
+signal = "liquidity_needed"
+confidence = 0.8
+metadata_fields = ["destination_chain", "token", "amount"]
+
+[[rules.conditions]]
+field = "amount_usd"
+op = "gt"
+value = "50000"
+
+[[rules.conditions]]
+field = "destination_chain"
+op = "eq"
+value = "solana"
+
+[[correlations]]
+name = "approval_then_bridge"
+sequence = ["token_approval", "bridge_deposit"]
+window = "30s"
+same_fields = ["source_address", "token"]
+signal = "high_confidence_bridge"
+confidence = 0.95
