@@ -86,6 +86,7 @@
           gotools
           go-tools
           golangci-lint
+          delve
           protobuf
           protoc-gen-go
           protoc-gen-go-grpc
