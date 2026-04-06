@@ -1,6 +1,7 @@
 # x-chain-oracle
 
 [![CI](https://github.com/vaporif/x-chain-oracle/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/vaporif/x-chain-oracle/actions/workflows/ci.yml)
+[![CI](https://github.com/vaporif/x-chain-oracle/actions/workflows/e2e.yml/badge.svg?branch=main)](https://github.com/vaporif/x-chain-oracle/actions/workflows/e2e.yml)
 
 Intent engine for tracking cross-chain operations with a configurable rule engine. Written in Golang because I have too much crab in my github.
 
