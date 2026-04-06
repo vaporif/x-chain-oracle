@@ -285,7 +285,7 @@ func TestWormholeBridgeDepositEndToEnd(t *testing.T) {
 	adapterWg.Add(1)
 	go func() {
 		defer adapterWg.Done()
-		a.Start(ctx)
+		_ = a.Start(ctx)
 		for event := range a.Events() {
 			rawEvents <- event
 		}

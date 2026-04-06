@@ -31,7 +31,7 @@ func main() {
 	}
 
 	zapLogger := buildLogger(cfg.LogLevel)
-	defer zapLogger.Sync()
+	defer func() { _ = zapLogger.Sync() }()
 	zap.ReplaceGlobals(zapLogger)
 	logger := zapLogger.Named("main")
 
