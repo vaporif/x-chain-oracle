@@ -65,7 +65,7 @@ func TestGetPriceUSD(t *testing.T) {
 		updatedAt: map[string]*big.Int{"0xChainlinkUSDC": big.NewInt(time.Now().Unix())},
 	}
 
-	cfg := config.ChainlinkConfig{CacheTTL: 30 * time.Second}
+	cfg := config.ChainlinkConfig{CacheTTL: 30 * time.Second, StalenessThreshold: 2 * time.Hour}
 	p := chainlink.NewWithCaller(cfg, caller, testRegistry(t), types.ChainEthereum)
 
 	result := p.GetPriceUSD(context.Background(), "USDC")
@@ -82,7 +82,7 @@ func TestGetPriceUSDStale(t *testing.T) {
 		updatedAt: map[string]*big.Int{"0xChainlinkUSDC": big.NewInt(stale)},
 	}
 
-	cfg := config.ChainlinkConfig{CacheTTL: 30 * time.Second}
+	cfg := config.ChainlinkConfig{CacheTTL: 30 * time.Second, StalenessThreshold: 2 * time.Hour}
 	p := chainlink.NewWithCaller(cfg, caller, testRegistry(t), types.ChainEthereum)
 
 	result := p.GetPriceUSD(context.Background(), "USDC")
@@ -94,7 +94,7 @@ func TestGetPriceUSDUnknownToken(t *testing.T) {
 	caller := &mockCaller{
 		decimals: map[string]uint8{}, answers: map[string]*big.Int{}, updatedAt: map[string]*big.Int{},
 	}
-	cfg := config.ChainlinkConfig{CacheTTL: 30 * time.Second}
+	cfg := config.ChainlinkConfig{CacheTTL: 30 * time.Second, StalenessThreshold: 2 * time.Hour}
 	p := chainlink.NewWithCaller(cfg, caller, testRegistry(t), types.ChainEthereum)
 
 	result := p.GetPriceUSD(context.Background(), "UNKNOWN")
@@ -109,7 +109,7 @@ func TestGetPriceUSDCaching(t *testing.T) {
 		updatedAt: map[string]*big.Int{"0xChainlinkUSDC": big.NewInt(time.Now().Unix())},
 	}
 
-	cfg := config.ChainlinkConfig{CacheTTL: 1 * time.Minute}
+	cfg := config.ChainlinkConfig{CacheTTL: 1 * time.Minute, StalenessThreshold: 2 * time.Hour}
 	p := chainlink.NewWithCaller(cfg, caller, testRegistry(t), types.ChainEthereum)
 
 	ctx := context.Background()

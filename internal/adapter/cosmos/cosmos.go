@@ -2,20 +2,12 @@ package cosmos
 
 import (
 	"context"
-	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/vaporif/x-chain-oracle/internal/adapter"
 	"github.com/vaporif/x-chain-oracle/internal/config"
 	"github.com/vaporif/x-chain-oracle/internal/types"
-)
-
-const (
-	cosmosEventBufferSize = 128
-	cosmosInitialBackoff  = 2 * time.Second
-	cosmosMaxBackoff      = 60 * time.Second
-	cosmosMaxRetries      = 5
 )
 
 type Adapter struct {
@@ -28,7 +20,7 @@ func New(chainID types.ChainID, cfg config.ChainConfig) *Adapter {
 	return &Adapter{
 		chainID: chainID,
 		cfg:     cfg,
-		events:  make(chan types.RawEvent, cosmosEventBufferSize),
+		events:  make(chan types.RawEvent, cfg.EventBuffer),
 	}
 }
 
@@ -36,9 +28,9 @@ func (a *Adapter) Start(ctx context.Context) error {
 	defer close(a.events)
 
 	return adapter.WithReconnect(ctx, adapter.ReconnectConfig{
-		InitialBackoff: cosmosInitialBackoff,
-		MaxBackoff:     cosmosMaxBackoff,
-		MaxRetries:     cosmosMaxRetries,
+		InitialBackoff: a.cfg.Backoff.Initial,
+		MaxBackoff:     a.cfg.Backoff.Max,
+		MaxRetries:     a.cfg.Backoff.MaxRetries,
 	}, func(ctx context.Context) error {
 		zap.L().Named("cosmos").Info("connecting",
 			zap.String("chain", string(a.chainID)),

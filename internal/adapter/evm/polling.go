@@ -18,14 +18,11 @@ type PollingStrategy struct {
 }
 
 func NewPollingStrategy(client *ethclient.Client, interval time.Duration) *PollingStrategy {
-	if interval <= 0 {
-		interval = evmDefaultPollInterval
-	}
 	return &PollingStrategy{client: client, interval: interval}
 }
 
 func (s *PollingStrategy) Subscribe(ctx context.Context, filter ethereum.FilterQuery) (<-chan types.Log, ethereum.Subscription, error) {
-	logs := make(chan types.Log, evmEventBufferSize)
+	logs := make(chan types.Log, 256)
 	sub := &pollingSub{
 		errCh:  make(chan error, 1),
 		cancel: func() {},

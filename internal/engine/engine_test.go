@@ -9,10 +9,21 @@ import (
 	"github.com/samber/mo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 
 	"github.com/vaporif/x-chain-oracle/internal/engine"
 	"github.com/vaporif/x-chain-oracle/internal/types"
 )
+
+func defaultCorrelatorCfg() engine.CorrelatorConfig {
+	return engine.CorrelatorConfig{
+		DefaultWindowTTL: 30 * time.Second,
+		PruneInterval:    5 * time.Second,
+		MaxWindowSize:    10000,
+	}
+}
 
 func TestMatchRuleGtCondition(t *testing.T) {
 	rules := &engine.RulesConfig{
@@ -26,7 +37,7 @@ func TestMatchRuleGtCondition(t *testing.T) {
 			},
 		},
 	}
-	eng := engine.New(rules)
+	eng := engine.New(rules, defaultCorrelatorCfg())
 	event := types.EnrichedEvent{
 		ChainEvent: types.ChainEvent{
 			Chain:     types.ChainEthereum,
@@ -56,7 +67,7 @@ func TestMatchRuleNoMatch(t *testing.T) {
 			},
 		},
 	}
-	eng := engine.New(rules)
+	eng := engine.New(rules, defaultCorrelatorCfg())
 	event := types.EnrichedEvent{
 		ChainEvent: types.ChainEvent{
 			EventType: types.EventBridgeDeposit,
@@ -79,7 +90,7 @@ func TestMatchRuleWrongTrigger(t *testing.T) {
 			},
 		},
 	}
-	eng := engine.New(rules)
+	eng := engine.New(rules, defaultCorrelatorCfg())
 	event := types.EnrichedEvent{
 		ChainEvent: types.ChainEvent{
 			EventType: types.EventDEXSwap,
@@ -178,7 +189,7 @@ func TestConditionOperators(t *testing.T) {
 					},
 				},
 			}
-			eng := engine.New(rules)
+			eng := engine.New(rules, defaultCorrelatorCfg())
 			signals := eng.Evaluate(tt.event)
 			if tt.expect {
 				assert.Len(t, signals, 1, "expected signal for %s", tt.name)
@@ -199,7 +210,7 @@ func TestCorrelationApprovalThenBridge(t *testing.T) {
 			Signal:     "high_confidence_bridge",
 			Confidence: 0.95,
 		},
-	})
+	}, defaultCorrelatorCfg())
 
 	now := time.Now().Unix()
 
@@ -239,7 +250,7 @@ func TestCorrelationWindowExpiry(t *testing.T) {
 			Signal:     "high_confidence_bridge",
 			Confidence: 0.95,
 		},
-	})
+	}, defaultCorrelatorCfg())
 
 	now := time.Now().Unix()
 
@@ -273,7 +284,7 @@ func TestCorrelationFieldMismatch(t *testing.T) {
 			Signal:     "high_confidence_bridge",
 			Confidence: 0.95,
 		},
-	})
+	}, defaultCorrelatorCfg())
 
 	now := time.Now().Unix()
 
@@ -308,7 +319,7 @@ func TestCorrelationBurstDetection(t *testing.T) {
 			Confidence:    0.7,
 			MinFirstCount: 3,
 		},
-	})
+	}, defaultCorrelatorCfg())
 
 	now := time.Now().Unix()
 	mint := "So11111111111111111111111111111111111111112"
@@ -346,7 +357,7 @@ func TestCorrelationBurstNotEnough(t *testing.T) {
 			Confidence:    0.7,
 			MinFirstCount: 3,
 		},
-	})
+	}, defaultCorrelatorCfg())
 
 	now := time.Now().Unix()
 
@@ -423,4 +434,35 @@ confidence = 0.5
 
 	_, err := engine.LoadRules(path)
 	assert.Error(t, err, "should reject sequence with length != 2")
+}
+
+func TestCompareNumericLogsOnParseFailure(t *testing.T) {
+	core, logs := observer.New(zapcore.DebugLevel)
+	logger := zap.New(core)
+	zap.ReplaceGlobals(logger)
+	defer zap.ReplaceGlobals(zap.NewNop())
+
+	rules := &engine.RulesConfig{
+		Rules: []engine.Rule{
+			{
+				Name:       "bad_rule",
+				Trigger:    "bridge_deposit",
+				Conditions: []engine.Condition{{Field: "token", Op: "gt", Value: "50000"}},
+				Signal:     "test",
+				Confidence: 0.5,
+			},
+		},
+	}
+	eng := engine.New(rules, defaultCorrelatorCfg())
+	signals := eng.Evaluate(types.EnrichedEvent{
+		ChainEvent: types.ChainEvent{
+			EventType: types.EventBridgeDeposit,
+			Token:     "USDC",
+		},
+	})
+
+	assert.Empty(t, signals, "non-numeric field should not match gt")
+
+	debugLogs := logs.FilterMessage("numeric comparison failed")
+	assert.Equal(t, 1, debugLogs.Len(), "expected debug log for parse failure")
 }

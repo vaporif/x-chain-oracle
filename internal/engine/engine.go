@@ -18,10 +18,10 @@ type Engine struct {
 	correlator *Correlator
 }
 
-func New(rules *RulesConfig) *Engine {
+func New(rules *RulesConfig, cfg CorrelatorConfig) *Engine {
 	return &Engine{
 		rules:      rules,
-		correlator: NewCorrelator(rules.Correlations),
+		correlator: NewCorrelator(rules.Correlations, cfg),
 	}
 }
 
@@ -81,6 +81,11 @@ func compareNumeric(op, fieldStr, valueStr string) bool {
 	fieldVal, err1 := strconv.ParseFloat(fieldStr, 64)
 	valueVal, err2 := strconv.ParseFloat(valueStr, 64)
 	if err1 != nil || err2 != nil {
+		zap.L().Named("engine").Debug("numeric comparison failed",
+			zap.String("field_value", fieldStr),
+			zap.String("rule_value", valueStr),
+			zap.String("op", op),
+		)
 		return false
 	}
 	switch op {

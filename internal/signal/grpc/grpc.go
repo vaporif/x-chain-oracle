@@ -16,8 +16,6 @@ import (
 	pb "github.com/vaporif/x-chain-oracle/proto"
 )
 
-const subscriberBufferSize = 64
-
 type listener struct {
 	filter *pb.SignalFilter
 	ch     chan *pb.Signal
@@ -26,16 +24,17 @@ type listener struct {
 type Emitter struct {
 	pb.UnimplementedOracleServiceServer
 
-	port      int
-	mu        sync.RWMutex
-	listeners []*listener
-	dropped   atomic.Int64
-	emitted   atomic.Int64
-	server    *googlegrpc.Server
+	port              int
+	subscriberBufSize int
+	mu                sync.RWMutex
+	listeners         []*listener
+	dropped           atomic.Int64
+	emitted           atomic.Int64
+	server            *googlegrpc.Server
 }
 
-func NewEmitter(port int) *Emitter {
-	return &Emitter{port: port}
+func NewEmitter(port int, subscriberBufSize int) *Emitter {
+	return &Emitter{port: port, subscriberBufSize: subscriberBufSize}
 }
 
 func (e *Emitter) Start(ctx context.Context) error {
@@ -88,7 +87,7 @@ func (e *Emitter) Emit(_ context.Context, sig types.Signal) error {
 func (e *Emitter) SubscribeSignals(filter *pb.SignalFilter, stream pb.OracleService_SubscribeSignalsServer) error {
 	l := &listener{
 		filter: filter,
-		ch:     make(chan *pb.Signal, subscriberBufferSize),
+		ch:     make(chan *pb.Signal, e.subscriberBufSize),
 	}
 
 	e.mu.Lock()

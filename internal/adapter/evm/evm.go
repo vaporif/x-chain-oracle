@@ -3,7 +3,6 @@ package evm
 import (
 	"context"
 	"math/big"
-	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -16,14 +15,6 @@ import (
 	"github.com/vaporif/x-chain-oracle/internal/config"
 	"github.com/vaporif/x-chain-oracle/internal/registry"
 	"github.com/vaporif/x-chain-oracle/internal/types"
-)
-
-const (
-	evmEventBufferSize     = 256
-	evmInitialBackoff      = 1 * time.Second
-	evmMaxBackoff          = 30 * time.Second
-	evmMaxRetries          = 10
-	evmDefaultPollInterval = 12 * time.Second
 )
 
 type SubscriptionStrategy interface {
@@ -46,7 +37,7 @@ func New(chain types.ChainID, cfg config.ChainConfig, reg *registry.Registry, st
 		chain:      chain,
 		cfg:        cfg,
 		reg:        reg,
-		events:     make(chan types.RawEvent, evmEventBufferSize),
+		events:     make(chan types.RawEvent, cfg.EventBuffer),
 		decoder:    NewDecoderRegistry(),
 		cache:      NewBlockCache(),
 		strategy:   strategy,
@@ -59,9 +50,9 @@ func (a *Adapter) Start(ctx context.Context) error {
 	logger := zap.L().Named("evm")
 
 	reconnCfg := adapter.ReconnectConfig{
-		InitialBackoff: evmInitialBackoff,
-		MaxBackoff:     evmMaxBackoff,
-		MaxRetries:     evmMaxRetries,
+		InitialBackoff: a.cfg.Backoff.Initial,
+		MaxBackoff:     a.cfg.Backoff.Max,
+		MaxRetries:     a.cfg.Backoff.MaxRetries,
 	}
 
 	return adapter.WithReconnect(ctx, reconnCfg, func(ctx context.Context) error {
@@ -124,7 +115,7 @@ func (a *Adapter) createStrategy() mo.Result[SubscriptionStrategy] {
 			}
 			client = c
 		}
-		return mo.Ok[SubscriptionStrategy](NewPollingStrategy(client, evmDefaultPollInterval))
+		return mo.Ok[SubscriptionStrategy](NewPollingStrategy(client, a.cfg.PollInterval))
 	}
 	client, err := ethclient.Dial(a.cfg.RPCURL)
 	if err != nil {

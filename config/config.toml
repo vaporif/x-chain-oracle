@@ -2,16 +2,38 @@ log_level = "info"
 
 [grpc]
 port = 50051
+subscriber_buffer_size = 64
 
 [enricher]
 workers = 4
 
 [chainlink]
 cache_ttl = "30s"
+staleness_threshold = "2h"
+
+[engine]
+default_window_ttl = "30s"
+prune_interval = "5s"
+max_window_size = 10000
+
+[pipeline]
+raw_event_buffer = 512
+chain_event_buffer = 256
+enriched_event_buffer = 64
+signal_buffer = 32
 
 [chains.ethereum]
 rpc_url = "wss://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}"
 mode = "websocket"
+poll_interval = "12s"
+event_buffer = 256
+backoff.initial = "1s"
+backoff.max = "30s"
+backoff.max_retries = 10
 
 [chains.solana]
 rpc_url = "wss://api.mainnet-beta.solana.com"
+event_buffer = 1024
+backoff.initial = "500ms"
+backoff.max = "15s"
+backoff.max_retries = 20

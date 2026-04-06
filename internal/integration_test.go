@@ -85,7 +85,11 @@ func TestFullPipelineRawEventToSignal(t *testing.T) {
 	defer cancel()
 
 	enr := enricher.New(reg, pp, 2)
-	eng := engine.New(rules)
+	eng := engine.New(rules, engine.CorrelatorConfig{
+		DefaultWindowTTL: 30 * time.Second,
+		PruneInterval:    5 * time.Second,
+		MaxWindowSize:    10000,
+	})
 
 	go normalizer.Run(ctx, rawEvents, chainEvents)
 	go enr.Run(ctx, chainEvents, enrichedEvents)
@@ -143,7 +147,11 @@ func TestPipelineNoMatchProducesNoSignal(t *testing.T) {
 	defer cancel()
 
 	enr := enricher.New(reg, pp, 2)
-	eng := engine.New(rules)
+	eng := engine.New(rules, engine.CorrelatorConfig{
+		DefaultWindowTTL: 30 * time.Second,
+		PruneInterval:    5 * time.Second,
+		MaxWindowSize:    10000,
+	})
 
 	go normalizer.Run(ctx, rawEvents, chainEvents)
 	go enr.Run(ctx, chainEvents, enrichedEvents)
@@ -270,7 +278,12 @@ func TestWormholeBridgeDepositEndToEnd(t *testing.T) {
 	close(logCh)
 	strategy := &mockStrategy{logs: logCh}
 
-	cfg := config.ChainConfig{RPCURL: "wss://fake", Mode: "websocket"}
+	cfg := config.ChainConfig{
+		RPCURL:      "wss://fake",
+		Mode:        "websocket",
+		EventBuffer: 256,
+		Backoff:     config.BackoffConfig{Initial: time.Second, Max: 30 * time.Second, MaxRetries: 10},
+	}
 	a := evm.New(types.ChainEthereum, cfg, reg, strategy, nil)
 
 	rawEvents := make(chan types.RawEvent, 10)
@@ -296,7 +309,11 @@ func TestWormholeBridgeDepositEndToEnd(t *testing.T) {
 	}()
 
 	enr := enricher.New(reg, pp, 2)
-	eng := engine.New(rules)
+	eng := engine.New(rules, engine.CorrelatorConfig{
+		DefaultWindowTTL: 30 * time.Second,
+		PruneInterval:    5 * time.Second,
+		MaxWindowSize:    10000,
+	})
 
 	go normalizer.Run(ctx, rawEvents, chainEvents)
 	go enr.Run(ctx, chainEvents, enrichedEvents)
@@ -329,7 +346,11 @@ func TestGracefulShutdown(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	enr := enricher.New(reg, pp, 2)
-	eng := engine.New(rules)
+	eng := engine.New(rules, engine.CorrelatorConfig{
+		DefaultWindowTTL: 30 * time.Second,
+		PruneInterval:    5 * time.Second,
+		MaxWindowSize:    10000,
+	})
 
 	var wg sync.WaitGroup
 	wg.Add(3)
