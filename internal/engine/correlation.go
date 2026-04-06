@@ -9,6 +9,11 @@ import (
 	"github.com/vaporif/x-chain-oracle/internal/types"
 )
 
+const (
+	defaultWindowTTL   = 30 * time.Second
+	prunerTickInterval = 5 * time.Second
+)
+
 type windowEntry struct {
 	event     types.EnrichedEvent
 	expiresAt time.Time
@@ -77,7 +82,7 @@ func NewCorrelator(correlations []Correlation) *Correlator {
 	for i, corr := range correlations {
 		d, err := time.ParseDuration(corr.Window)
 		if err != nil {
-			d = 30 * time.Second
+			d = defaultWindowTTL
 		}
 		correlations[i].windowDuration = d
 		for _, evtType := range corr.Sequence {
@@ -95,7 +100,7 @@ func NewCorrelator(correlations []Correlation) *Correlator {
 
 func (c *Correlator) StartPruner(done <-chan struct{}) {
 	go func() {
-		ticker := time.NewTicker(5 * time.Second)
+		ticker := time.NewTicker(prunerTickInterval)
 		defer ticker.Stop()
 		for {
 			select {
@@ -141,7 +146,7 @@ func (c *Correlator) Process(event types.EnrichedEvent) []types.Signal {
 	if window, ok := c.windows[evtType]; ok {
 		ttl := c.windowTTLs[evtType]
 		if ttl == 0 {
-			ttl = 30 * time.Second
+			ttl = defaultWindowTTL
 		}
 		window.Add(event, ttl)
 	}

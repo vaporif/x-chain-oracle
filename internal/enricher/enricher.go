@@ -17,7 +17,7 @@ func Enrich(ctx context.Context, ce types.ChainEvent, reg *registry.Registry, pp
 	logger := zap.L().Named("enricher")
 	enriched := types.EnrichedEvent{ChainEvent: ce}
 
-	if info, ok := reg.LookupContract(ce.Chain, ce.ContractAddress); ok {
+	if info, ok := reg.LookupContract(ce.Chain, ce.ContractAddress).Get(); ok {
 		enriched.ContractName = mo.Some(info.Name)
 		enriched.Protocol = mo.Some(info.Protocol)
 	} else {
@@ -36,6 +36,12 @@ func Enrich(ctx context.Context, ce types.ChainEvent, reg *registry.Registry, pp
 		enriched.AmountUSD = mo.None[float64]()
 		logger.Debug("price unavailable", zap.String("token", ce.Token))
 	}
+
+	logger.Debug("event enriched",
+		zap.String("tx", ce.TxHash),
+		zap.String("contract_name", enriched.ContractName.OrElse("unknown")),
+		zap.Float64("amount_usd", enriched.AmountUSD.OrElse(0)),
+	)
 
 	return enriched
 }

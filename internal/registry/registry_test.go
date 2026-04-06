@@ -35,16 +35,15 @@ address = "0xChainlinkETH"
 	reg, err := registry.Load(path)
 	require.NoError(t, err)
 
-	contract, ok := reg.LookupContract(types.ChainEthereum, "0xWormhole")
+	contract, ok := reg.LookupContract(types.ChainEthereum, "0xWormhole").Get()
 	assert.True(t, ok)
 	assert.Equal(t, "Wormhole Token Bridge", contract.Name)
 	assert.Equal(t, "wormhole", contract.Protocol)
 	assert.True(t, contract.MedianBridgeLatency.IsPresent())
 
-	_, ok = reg.LookupContract(types.ChainEthereum, "0xUnknown")
-	assert.False(t, ok)
+	assert.True(t, reg.LookupContract(types.ChainEthereum, "0xUnknown").IsAbsent())
 
-	feed, ok := reg.LookupPriceFeed(types.ChainEthereum, "USDC")
+	feed, ok := reg.LookupPriceFeed(types.ChainEthereum, "USDC").Get()
 	assert.True(t, ok)
 	assert.Equal(t, "0xChainlinkUSDC", feed.Address)
 }

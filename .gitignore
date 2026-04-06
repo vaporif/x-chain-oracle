@@ -1,2 +1,22 @@
+# Binaries
 oracle
+client
 *.exe
+
+# Test
+*.test
+*.out
+coverage.html
+lcov.info
+
+# Nix
+result
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*~
+
+# OS
+.DS_Store

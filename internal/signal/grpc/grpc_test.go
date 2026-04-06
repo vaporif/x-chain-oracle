@@ -27,7 +27,7 @@ func setupServer(t *testing.T) (*grpcemitter.Emitter, pb.OracleServiceClient, fu
 
 	srv := grpc.NewServer()
 	pb.RegisterOracleServiceServer(srv, emitter)
-	go srv.Serve(lis)
+	go func() { _ = srv.Serve(lis) }()
 
 	conn, err := grpc.NewClient("passthrough:///bufnet",
 		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
@@ -39,9 +39,9 @@ func setupServer(t *testing.T) (*grpcemitter.Emitter, pb.OracleServiceClient, fu
 
 	client := pb.NewOracleServiceClient(conn)
 	cleanup := func() {
-		conn.Close()
+		_ = conn.Close()
 		srv.GracefulStop()
-		lis.Close()
+		_ = lis.Close()
 	}
 	return emitter, client, cleanup
 }

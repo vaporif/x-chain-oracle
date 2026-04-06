@@ -11,6 +11,13 @@ import (
 	"github.com/vaporif/x-chain-oracle/internal/types"
 )
 
+const (
+	cosmosEventBufferSize = 128
+	cosmosInitialBackoff  = 2 * time.Second
+	cosmosMaxBackoff      = 60 * time.Second
+	cosmosMaxRetries      = 5
+)
+
 type Adapter struct {
 	chainID types.ChainID
 	cfg     config.ChainConfig
@@ -21,7 +28,7 @@ func New(chainID types.ChainID, cfg config.ChainConfig) *Adapter {
 	return &Adapter{
 		chainID: chainID,
 		cfg:     cfg,
-		events:  make(chan types.RawEvent, 128),
+		events:  make(chan types.RawEvent, cosmosEventBufferSize),
 	}
 }
 
@@ -29,9 +36,9 @@ func (a *Adapter) Start(ctx context.Context) error {
 	defer close(a.events)
 
 	return adapter.WithReconnect(ctx, adapter.ReconnectConfig{
-		InitialBackoff: 2 * time.Second,
-		MaxBackoff:     60 * time.Second,
-		MaxRetries:     5,
+		InitialBackoff: cosmosInitialBackoff,
+		MaxBackoff:     cosmosMaxBackoff,
+		MaxRetries:     cosmosMaxRetries,
 	}, func(ctx context.Context) error {
 		zap.L().Named("cosmos").Info("connecting",
 			zap.String("chain", string(a.chainID)),

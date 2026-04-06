@@ -9,7 +9,9 @@ import (
 	"syscall"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/vaporif/x-chain-oracle/internal/adapter"
 	"github.com/vaporif/x-chain-oracle/internal/adapter/evm"
 	"github.com/vaporif/x-chain-oracle/internal/config"
@@ -23,15 +25,16 @@ import (
 )
 
 func main() {
-	zapLogger, _ := zap.NewProduction()
-	defer zapLogger.Sync()
-	zap.ReplaceGlobals(zapLogger)
-	logger := zapLogger.Named("main")
-
 	cfg, err := config.Load("config/config.toml")
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}
+
+	zapLogger := buildLogger(cfg.LogLevel)
+	defer func() { _ = zapLogger.Sync() }()
+	zap.ReplaceGlobals(zapLogger)
+	logger := zapLogger.Named("main")
+
 	reg, err := registry.Load("config/registry.toml")
 	if err != nil {
 		log.Fatalf("registry: %v", err)
@@ -44,17 +47,36 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	priceProvider := chainlink.New(cfg.Chainlink)
+	var httpClient *ethclient.Client
+	if ethCfg, ok := cfg.Chains["ethereum"]; ok {
+		httpURL := evm.DeriveHTTPURL(ethCfg.RPCURL)
+		logger.Info("derived HTTP URL", zap.String("http_url", httpURL))
+		hc, err := ethclient.DialContext(ctx, httpURL)
+		if err != nil {
+			log.Fatalf("http ethclient: %v", err)
+		}
+		httpClient = hc
+		defer httpClient.Close()
+	}
+
+	priceProvider := chainlink.New(cfg.Chainlink, httpClient, reg, types.ChainEthereum)
 	emitter := grpcemitter.NewEmitter(cfg.GRPC.Port)
 
-	rawEvents := make(chan types.RawEvent, 512)
-	chainEvents := make(chan types.ChainEvent, 256)
-	enrichedEvents := make(chan types.EnrichedEvent, 64)
-	signals := make(chan types.Signal, 32)
+	const (
+		rawEventBufferSize      = 512
+		chainEventBufferSize    = 256
+		enrichedEventBufferSize = 64
+		signalBufferSize        = 32
+	)
+
+	rawEvents := make(chan types.RawEvent, rawEventBufferSize)
+	chainEvents := make(chan types.ChainEvent, chainEventBufferSize)
+	enrichedEvents := make(chan types.EnrichedEvent, enrichedEventBufferSize)
+	signals := make(chan types.Signal, signalBufferSize)
 
 	var adapters []adapter.ChainAdapter
-	if ethCfg, ok := cfg.Chains["ethereum"]; ok {
-		adapters = append(adapters, evm.New(types.ChainEthereum, ethCfg, reg))
+	if _, ok := cfg.Chains["ethereum"]; ok {
+		adapters = append(adapters, evm.New(types.ChainEthereum, cfg.Chains["ethereum"], reg, nil, httpClient))
 	}
 
 	var wg sync.WaitGroup
@@ -65,17 +87,15 @@ func main() {
 		wg.Add(1)
 		go func(a adapter.ChainAdapter) {
 			defer wg.Done()
-			go func() {
-				defer adapterWg.Done()
-				for event := range a.Events() {
-					rawEvents <- event
-				}
-			}()
+			defer adapterWg.Done()
 			if err := a.Start(ctx); err != nil && ctx.Err() == nil {
 				logger.Error("adapter failed",
 					zap.String("chain", string(a.Chain())),
 					zap.Error(err),
 				)
+			}
+			for event := range a.Events() {
+				rawEvents <- event
 			}
 		}(a)
 	}
@@ -109,4 +129,20 @@ func main() {
 	cancel()
 	wg.Wait()
 	logger.Info("shutdown complete")
+}
+
+func buildLogger(level string) *zap.Logger {
+	cfg := zap.NewProductionConfig()
+	switch level {
+	case "debug":
+		cfg.Level.SetLevel(zapcore.DebugLevel)
+	case "warn":
+		cfg.Level.SetLevel(zapcore.WarnLevel)
+	case "error":
+		cfg.Level.SetLevel(zapcore.ErrorLevel)
+	default:
+		cfg.Level.SetLevel(zapcore.InfoLevel)
+	}
+	logger, _ := cfg.Build()
+	return logger
 }

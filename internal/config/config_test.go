@@ -40,6 +40,32 @@ rpc_url = "wss://sol.example.com"
 	assert.Equal(t, "websocket", cfg.Chains["ethereum"].Mode)
 }
 
+func TestLoadConfigWithLogLevel(t *testing.T) {
+	toml := `
+log_level = "debug"
+
+[grpc]
+port = 50051
+
+[enricher]
+workers = 4
+
+[chainlink]
+cache_ttl = "30s"
+
+[chains.ethereum]
+rpc_url = "wss://eth.example.com"
+mode = "websocket"
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	require.NoError(t, os.WriteFile(path, []byte(toml), 0644))
+
+	cfg, err := config.Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, "debug", cfg.LogLevel)
+}
+
 func TestEnvVarOverride(t *testing.T) {
 	toml := `
 [grpc]

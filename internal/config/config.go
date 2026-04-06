@@ -11,6 +11,7 @@ import (
 )
 
 type Config struct {
+	LogLevel  string                 `koanf:"log_level"`
 	GRPC      GRPCConfig             `koanf:"grpc"`
 	Enricher  EnricherConfig         `koanf:"enricher"`
 	Chainlink ChainlinkConfig        `koanf:"chainlink"`

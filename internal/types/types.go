@@ -7,6 +7,7 @@ type ChainID string
 const (
 	ChainEthereum  ChainID = "ethereum"
 	ChainArbitrum  ChainID = "arbitrum"
+	ChainBase      ChainID = "base"
 	ChainSolana    ChainID = "solana"
 	ChainCosmosHub ChainID = "cosmoshub"
 )

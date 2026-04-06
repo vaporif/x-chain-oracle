@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func Normalize(raw types.RawEvent) (types.ChainEvent, error) {
+func Normalize(raw types.RawEvent) mo.Result[types.ChainEvent] {
 	event := types.ChainEvent{
 		Chain:     raw.Chain,
 		Block:     raw.Block,
@@ -27,31 +27,31 @@ func Normalize(raw types.RawEvent) (types.ChainEvent, error) {
 	case types.EventIBCSendPacket, types.EventIBCAckPacket:
 		return normalizeCosmos(event, raw.Data)
 	default:
-		return types.ChainEvent{}, fmt.Errorf("unknown event type: %s", raw.EventType)
+		return mo.Err[types.ChainEvent](fmt.Errorf("unknown event type: %s", raw.EventType))
 	}
 }
 
-func normalizeEVM(event types.ChainEvent, data map[string]any) (types.ChainEvent, error) {
-	event, err := normalizeTokenEvent(event, data, "token", "sender")
-	if err != nil {
-		return event, err
+func normalizeEVM(event types.ChainEvent, data map[string]any) mo.Result[types.ChainEvent] {
+	result := normalizeTokenEvent(event, data, "token", "sender")
+	if e, err := result.Get(); err == nil {
+		e.ContractAddress, _ = data["contract"].(string)
+		return mo.Ok(e)
 	}
-	event.ContractAddress, _ = data["contract"].(string)
-	return event, nil
+	return result
 }
 
-func normalizeSolana(event types.ChainEvent, data map[string]any) (types.ChainEvent, error) {
+func normalizeSolana(event types.ChainEvent, data map[string]any) mo.Result[types.ChainEvent] {
 	return normalizeTokenEvent(event, data, "mint", "owner")
 }
 
-func normalizeCosmos(event types.ChainEvent, data map[string]any) (types.ChainEvent, error) {
+func normalizeCosmos(event types.ChainEvent, data map[string]any) mo.Result[types.ChainEvent] {
 	return normalizeTokenEvent(event, data, "token", "sender")
 }
 
-func normalizeTokenEvent(event types.ChainEvent, data map[string]any, tokenKey, senderKey string) (types.ChainEvent, error) {
+func normalizeTokenEvent(event types.ChainEvent, data map[string]any, tokenKey, senderKey string) mo.Result[types.ChainEvent] {
 	token, ok := data[tokenKey].(string)
 	if !ok {
-		return types.ChainEvent{}, fmt.Errorf("missing or invalid '%s' field", tokenKey)
+		return mo.Err[types.ChainEvent](fmt.Errorf("missing or invalid '%s' field", tokenKey))
 	}
 	event.Token = token
 	event.Amount, _ = data["amount"].(string)
@@ -62,7 +62,7 @@ func normalizeTokenEvent(event types.ChainEvent, data map[string]any, tokenKey, 
 	} else {
 		event.DestChain = mo.None[types.ChainID]()
 	}
-	return event, nil
+	return mo.Ok(event)
 }
 
 func Run(ctx context.Context, in <-chan types.RawEvent, out chan<- types.ChainEvent) {
@@ -72,7 +72,7 @@ func Run(ctx context.Context, in <-chan types.RawEvent, out chan<- types.ChainEv
 		if ctx.Err() != nil {
 			return
 		}
-		event, err := Normalize(raw)
+		event, err := Normalize(raw).Get()
 		if err != nil {
 			logger.Warn("skipping malformed event",
 				zap.String("tx", raw.TxHash),
@@ -80,6 +80,12 @@ func Run(ctx context.Context, in <-chan types.RawEvent, out chan<- types.ChainEv
 			)
 			continue
 		}
+		logger.Debug("event normalized",
+			zap.String("chain", string(event.Chain)),
+			zap.String("tx", event.TxHash),
+			zap.String("token", event.Token),
+			zap.String("amount", event.Amount),
+		)
 		select {
 		case out <- event:
 		case <-ctx.Done():
