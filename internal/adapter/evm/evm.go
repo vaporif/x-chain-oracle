@@ -14,6 +14,7 @@ import (
 	"github.com/vaporif/x-chain-oracle/internal/adapter"
 	"github.com/vaporif/x-chain-oracle/internal/config"
 	"github.com/vaporif/x-chain-oracle/internal/registry"
+	"github.com/vaporif/x-chain-oracle/internal/status"
 	"github.com/vaporif/x-chain-oracle/internal/types"
 )
 
@@ -30,23 +31,36 @@ type Adapter struct {
 	cache      *BlockCache
 	strategy   SubscriptionStrategy
 	httpClient *ethclient.Client
+	tracker    *status.Tracker
 }
 
-func New(chain types.ChainID, cfg config.ChainConfig, reg *registry.Registry, strategy SubscriptionStrategy, httpClient *ethclient.Client) *Adapter {
+func New(chain types.ChainID, cfg config.ChainConfig, reg *registry.Registry, strategy SubscriptionStrategy, httpClient *ethclient.Client, tracker *status.Tracker) *Adapter {
+	tokenBridgeAddr := ""
+	if reg != nil {
+		if wh, ok := reg.WormholeConfig(chain); ok {
+			tokenBridgeAddr = wh.TokenBridge
+		}
+	}
 	return &Adapter{
 		chain:      chain,
 		cfg:        cfg,
 		reg:        reg,
 		events:     make(chan types.RawEvent, cfg.EventBuffer),
-		decoder:    NewDecoderRegistry(),
+		decoder:    NewDecoderRegistry(tokenBridgeAddr),
 		cache:      NewBlockCache(),
 		strategy:   strategy,
 		httpClient: httpClient,
+		tracker:    tracker,
 	}
 }
 
 func (a *Adapter) Start(ctx context.Context) error {
 	defer close(a.events)
+	defer func() {
+		if a.tracker != nil {
+			a.tracker.SetConnected(a.chain, false)
+		}
+	}()
 	logger := zap.L().Named("evm")
 
 	reconnCfg := adapter.ReconnectConfig{
@@ -78,6 +92,10 @@ func (a *Adapter) Start(ctx context.Context) error {
 			return err
 		}
 		defer sub.Unsubscribe()
+
+		if a.tracker != nil {
+			a.tracker.SetConnected(a.chain, true)
+		}
 
 		logger.Info("subscribed to logs",
 			zap.String("chain", string(a.chain)),
@@ -151,6 +169,10 @@ func (a *Adapter) processLog(ctx context.Context, logger *zap.Logger, log ethtyp
 		}
 	}
 	rawEvent.Timestamp = ts
+
+	if a.tracker != nil {
+		a.tracker.UpdateBlock(a.chain, log.BlockNumber, rawEvent.Timestamp)
+	}
 
 	logger.Debug("raw event received",
 		zap.String("chain", string(a.chain)),

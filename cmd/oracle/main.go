@@ -21,6 +21,7 @@ import (
 	"github.com/vaporif/x-chain-oracle/internal/price/chainlink"
 	"github.com/vaporif/x-chain-oracle/internal/registry"
 	grpcemitter "github.com/vaporif/x-chain-oracle/internal/signal/grpc"
+	"github.com/vaporif/x-chain-oracle/internal/status"
 	"github.com/vaporif/x-chain-oracle/internal/types"
 )
 
@@ -44,6 +45,8 @@ func main() {
 		log.Fatalf("rules: %v", err)
 	}
 
+	tracker := status.NewTracker()
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
@@ -60,7 +63,7 @@ func main() {
 	}
 
 	priceProvider := chainlink.New(cfg.Chainlink, httpClient, reg, types.ChainEthereum)
-	emitter := grpcemitter.NewEmitter(cfg.GRPC.Port, cfg.GRPC.SubscriberBufferSize)
+	emitter := grpcemitter.NewEmitter(cfg.GRPC.Port, cfg.GRPC.SubscriberBufferSize, tracker)
 
 	rawEvents := make(chan types.RawEvent, cfg.Pipeline.RawEventBuffer)
 	chainEvents := make(chan types.ChainEvent, cfg.Pipeline.ChainEventBuffer)
@@ -69,7 +72,7 @@ func main() {
 
 	var adapters []adapter.ChainAdapter
 	if _, ok := cfg.Chains["ethereum"]; ok {
-		adapters = append(adapters, evm.New(types.ChainEthereum, cfg.Chains["ethereum"], reg, nil, httpClient))
+		adapters = append(adapters, evm.New(types.ChainEthereum, cfg.Chains["ethereum"], reg, nil, httpClient, tracker))
 	}
 
 	var wg sync.WaitGroup

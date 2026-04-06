@@ -11,7 +11,7 @@ import (
 
 func TestNewAdapterFields(t *testing.T) {
 	cfg := config.ChainConfig{RPCURL: "wss://test.com", Mode: "websocket"}
-	a := evm.New(types.ChainEthereum, cfg, nil, nil, nil)
+	a := evm.New(types.ChainEthereum, cfg, nil, nil, nil, nil)
 
 	assert.Equal(t, types.ChainEthereum, a.Chain())
 	assert.NotNil(t, a.Events())

@@ -23,9 +23,15 @@ type PriceFeed struct {
 	Address string `koanf:"address"`
 }
 
+type WormholeAddresses struct {
+	Core        string `koanf:"core"`
+	TokenBridge string `koanf:"token_bridge"`
+}
+
 type Registry struct {
 	contracts  map[types.ChainID]map[string]ContractInfo
 	priceFeeds map[types.ChainID]map[string]PriceFeed
+	wormhole   map[types.ChainID]WormholeAddresses
 }
 
 func (r *Registry) LookupContract(chain types.ChainID, address string) mo.Option[ContractInfo] {
@@ -54,9 +60,15 @@ func (r *Registry) ContractAddresses(chain types.ChainID) []string {
 	return slices.Collect(maps.Keys(chainContracts))
 }
 
+func (r *Registry) WormholeConfig(chain types.ChainID) (WormholeAddresses, bool) {
+	wh, ok := r.wormhole[chain]
+	return wh, ok
+}
+
 type rawRegistry struct {
 	Contracts  map[string]map[string]ContractInfo `koanf:"contracts"`
 	PriceFeeds map[string]map[string]PriceFeed    `koanf:"price_feeds"`
+	Wormhole   map[string]WormholeAddresses       `koanf:"wormhole"`
 }
 
 func Load(path string) (*Registry, error) {
@@ -73,6 +85,7 @@ func Load(path string) (*Registry, error) {
 	reg := &Registry{
 		contracts:  make(map[types.ChainID]map[string]ContractInfo),
 		priceFeeds: make(map[types.ChainID]map[string]PriceFeed),
+		wormhole:   make(map[types.ChainID]WormholeAddresses),
 	}
 
 	for chain, contracts := range raw.Contracts {
@@ -94,6 +107,10 @@ func Load(path string) (*Registry, error) {
 		for token, feed := range feeds {
 			reg.priceFeeds[cid][token] = feed
 		}
+	}
+
+	for chain, wh := range raw.Wormhole {
+		reg.wormhole[types.ChainID(chain)] = wh
 	}
 
 	return reg, nil

@@ -137,7 +137,11 @@ median_bridge_latency = "15m"
 
 [price_feeds.ethereum."%s"]
 address = "%s"
-`, wormholeAddr, strings.ToLower(testTokenAddr), chainlinkAddr)
+
+[wormhole.ethereum]
+core = "%s"
+token_bridge = "%s"
+`, wormholeAddr, strings.ToLower(testTokenAddr), chainlinkAddr, wormholeAddr, wormholeTokenBridge)
 	path := filepath.Join(dir, "registry.toml")
 	require.NoError(t, os.WriteFile(path, []byte(content), 0644))
 	return path
@@ -235,14 +239,14 @@ func TestE2EPipeline(t *testing.T) {
 
 	// Build pipeline components
 	priceProvider := chainlink.New(cfg.Chainlink, client, reg, otypes.ChainEthereum)
-	emitter := grpcemitter.NewEmitter(grpcPort, cfg.GRPC.SubscriberBufferSize)
+	emitter := grpcemitter.NewEmitter(grpcPort, cfg.GRPC.SubscriberBufferSize, nil)
 
 	rawEvents := make(chan otypes.RawEvent, 256)
 	chainEvents := make(chan otypes.ChainEvent, 256)
 	enrichedEvents := make(chan otypes.EnrichedEvent, 64)
 	signals := make(chan otypes.Signal, 32)
 
-	adapter := evm.New(otypes.ChainEthereum, cfg.Chains["ethereum"], reg, nil, client)
+	adapter := evm.New(otypes.ChainEthereum, cfg.Chains["ethereum"], reg, nil, client, nil)
 	enr := enricher.New(reg, priceProvider, cfg.Enricher.Workers)
 	eng := engine.New(rules, engine.CorrelatorConfig{
 		DefaultWindowTTL: cfg.Engine.DefaultWindowTTL,
