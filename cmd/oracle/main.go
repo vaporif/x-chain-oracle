@@ -60,19 +60,12 @@ func main() {
 	}
 
 	priceProvider := chainlink.New(cfg.Chainlink, httpClient, reg, types.ChainEthereum)
-	emitter := grpcemitter.NewEmitter(cfg.GRPC.Port)
+	emitter := grpcemitter.NewEmitter(cfg.GRPC.Port, cfg.GRPC.SubscriberBufferSize)
 
-	const (
-		rawEventBufferSize      = 512
-		chainEventBufferSize    = 256
-		enrichedEventBufferSize = 64
-		signalBufferSize        = 32
-	)
-
-	rawEvents := make(chan types.RawEvent, rawEventBufferSize)
-	chainEvents := make(chan types.ChainEvent, chainEventBufferSize)
-	enrichedEvents := make(chan types.EnrichedEvent, enrichedEventBufferSize)
-	signals := make(chan types.Signal, signalBufferSize)
+	rawEvents := make(chan types.RawEvent, cfg.Pipeline.RawEventBuffer)
+	chainEvents := make(chan types.ChainEvent, cfg.Pipeline.ChainEventBuffer)
+	enrichedEvents := make(chan types.EnrichedEvent, cfg.Pipeline.EnrichedEventBuffer)
+	signals := make(chan types.Signal, cfg.Pipeline.SignalBuffer)
 
 	var adapters []adapter.ChainAdapter
 	if _, ok := cfg.Chains["ethereum"]; ok {
@@ -106,7 +99,11 @@ func main() {
 	}()
 
 	enr := enricher.New(reg, priceProvider, cfg.Enricher.Workers)
-	eng := engine.New(rules)
+	eng := engine.New(rules, engine.CorrelatorConfig{
+		DefaultWindowTTL: cfg.Engine.DefaultWindowTTL,
+		PruneInterval:    cfg.Engine.PruneInterval,
+		MaxWindowSize:    cfg.Engine.MaxWindowSize,
+	})
 
 	wg.Add(4)
 	go func() { defer wg.Done(); normalizer.Run(ctx, rawEvents, chainEvents) }()

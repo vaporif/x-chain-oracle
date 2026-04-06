@@ -6,13 +6,16 @@ import (
 
 	"slices"
 
+	"go.uber.org/zap"
+
 	"github.com/vaporif/x-chain-oracle/internal/types"
 )
 
-const (
-	defaultWindowTTL   = 30 * time.Second
-	prunerTickInterval = 5 * time.Second
-)
+type CorrelatorConfig struct {
+	DefaultWindowTTL time.Duration
+	PruneInterval    time.Duration
+	MaxWindowSize    int
+}
 
 type windowEntry struct {
 	event     types.EnrichedEvent
@@ -22,6 +25,7 @@ type windowEntry struct {
 type EventWindow struct {
 	mu      sync.Mutex
 	entries []windowEntry
+	maxSize int
 }
 
 func (w *EventWindow) Add(event types.EnrichedEvent, ttl time.Duration) {
@@ -31,6 +35,14 @@ func (w *EventWindow) Add(event types.EnrichedEvent, ttl time.Duration) {
 		event:     event,
 		expiresAt: time.Now().Add(ttl),
 	})
+	if w.maxSize > 0 && len(w.entries) > w.maxSize {
+		drop := len(w.entries) - w.maxSize
+		zap.L().Named("engine.correlation").Warn("window size cap reached, dropping oldest entries",
+			zap.Int("dropped", drop),
+			zap.Int("max_size", w.maxSize),
+		)
+		w.entries = w.entries[drop:]
+	}
 }
 
 func (w *EventWindow) MatchingEntries(sameFields []string, event types.EnrichedEvent) []types.EnrichedEvent {
@@ -72,22 +84,24 @@ type Correlator struct {
 	correlations []Correlation
 	windows      map[string]*EventWindow
 	windowTTLs   map[string]time.Duration
+	cfg          CorrelatorConfig
 }
 
-func NewCorrelator(correlations []Correlation) *Correlator {
+func NewCorrelator(correlations []Correlation, cfg CorrelatorConfig) *Correlator {
 	c := &Correlator{
 		windows:    make(map[string]*EventWindow),
 		windowTTLs: make(map[string]time.Duration),
+		cfg:        cfg,
 	}
 	for i, corr := range correlations {
 		d, err := time.ParseDuration(corr.Window)
 		if err != nil {
-			d = defaultWindowTTL
+			d = cfg.DefaultWindowTTL
 		}
 		correlations[i].windowDuration = d
 		for _, evtType := range corr.Sequence {
 			if _, ok := c.windows[evtType]; !ok {
-				c.windows[evtType] = &EventWindow{}
+				c.windows[evtType] = &EventWindow{maxSize: cfg.MaxWindowSize}
 			}
 			if d > c.windowTTLs[evtType] {
 				c.windowTTLs[evtType] = d
@@ -100,7 +114,7 @@ func NewCorrelator(correlations []Correlation) *Correlator {
 
 func (c *Correlator) StartPruner(done <-chan struct{}) {
 	go func() {
-		ticker := time.NewTicker(prunerTickInterval)
+		ticker := time.NewTicker(c.cfg.PruneInterval)
 		defer ticker.Stop()
 		for {
 			select {
@@ -146,7 +160,7 @@ func (c *Correlator) Process(event types.EnrichedEvent) []types.Signal {
 	if window, ok := c.windows[evtType]; ok {
 		ttl := c.windowTTLs[evtType]
 		if ttl == 0 {
-			ttl = defaultWindowTTL
+			ttl = c.cfg.DefaultWindowTTL
 		}
 		window.Add(event, ttl)
 	}

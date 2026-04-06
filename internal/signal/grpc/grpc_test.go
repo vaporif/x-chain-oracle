@@ -23,7 +23,7 @@ const bufSize = 1024 * 1024
 func setupServer(t *testing.T) (*grpcemitter.Emitter, pb.OracleServiceClient, func()) {
 	t.Helper()
 	lis := bufconn.Listen(bufSize)
-	emitter := grpcemitter.NewEmitter(50051)
+	emitter := grpcemitter.NewEmitter(50051, 64)
 
 	srv := grpc.NewServer()
 	pb.RegisterOracleServiceServer(srv, emitter)

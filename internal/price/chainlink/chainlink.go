@@ -20,7 +20,6 @@ import (
 )
 
 const (
-	stalenessThreshold         = 2 * time.Hour
 	abiWordSize                = 32
 	latestRoundDataResponseLen = 160 // 5 ABI words
 )
@@ -87,7 +86,7 @@ func (p *Provider) GetPriceUSD(ctx context.Context, token string) mo.Result[floa
 	}
 
 	updatedTime := time.Unix(round.UpdatedAt.Int64(), 0)
-	if time.Since(updatedTime) > stalenessThreshold {
+	if time.Since(updatedTime) > p.cfg.StalenessThreshold {
 		logger.Warn("stale price feed",
 			zap.String("token", token),
 			zap.Time("updated_at", updatedTime),
