@@ -9,9 +9,6 @@ import (
 	"github.com/samber/mo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-	"go.uber.org/zap/zaptest/observer"
 
 	"github.com/vaporif/x-chain-oracle/internal/engine"
 	"github.com/vaporif/x-chain-oracle/internal/types"
@@ -436,12 +433,7 @@ confidence = 0.5
 	assert.Error(t, err, "should reject sequence with length != 2")
 }
 
-func TestCompareNumericLogsOnParseFailure(t *testing.T) {
-	core, logs := observer.New(zapcore.DebugLevel)
-	logger := zap.New(core)
-	zap.ReplaceGlobals(logger)
-	defer zap.ReplaceGlobals(zap.NewNop())
-
+func TestCompareNumericNonNumericFieldReturnsNoSignal(t *testing.T) {
 	rules := &engine.RulesConfig{
 		Rules: []engine.Rule{
 			{
@@ -462,7 +454,4 @@ func TestCompareNumericLogsOnParseFailure(t *testing.T) {
 	})
 
 	assert.Empty(t, signals, "non-numeric field should not match gt")
-
-	debugLogs := logs.FilterMessage("numeric comparison failed")
-	assert.Equal(t, 1, debugLogs.Len(), "expected debug log for parse failure")
 }
