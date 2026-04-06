@@ -12,3 +12,7 @@ address = "0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6"
 
 [price_feeds.ethereum.ETH]
 address = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419"
+
+[contracts.ethereum."0x98f3c9e6E3fAce36bAAd05FE09d375Ef1464288B"]
+name = "Wormhole Core"
+protocol = "wormhole"

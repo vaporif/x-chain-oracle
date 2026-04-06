@@ -80,6 +80,12 @@ func Run(ctx context.Context, in <-chan types.RawEvent, out chan<- types.ChainEv
 			)
 			continue
 		}
+		logger.Debug("event normalized",
+			zap.String("chain", string(event.Chain)),
+			zap.String("tx", event.TxHash),
+			zap.String("token", event.Token),
+			zap.String("amount", event.Amount),
+		)
 		select {
 		case out <- event:
 		case <-ctx.Done():

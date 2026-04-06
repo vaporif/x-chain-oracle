@@ -1,3 +1,5 @@
+log_level = "info"
+
 [grpc]
 port = 50051
 

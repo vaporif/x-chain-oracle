@@ -31,7 +31,12 @@ func (e *Engine) Evaluate(event types.EnrichedEvent) []types.Signal {
 		if rule.Trigger != string(event.EventType) {
 			continue
 		}
-		if !matchConditions(rule.Conditions, event) {
+		matched := matchConditions(rule.Conditions, event)
+		zap.L().Named("engine").Debug("rule evaluated",
+			zap.String("rule", rule.Name),
+			zap.Bool("matched", matched),
+		)
+		if !matched {
 			continue
 		}
 		sig := newSignal(rule.Signal, rule.Confidence, event, buildMetadata(rule.MetadataFields, event))
@@ -172,7 +177,11 @@ func (e *Engine) Run(ctx context.Context, in <-chan types.EnrichedEvent, out cha
 				return
 			}
 		}
-		for _, sig := range e.correlator.Process(event) {
+		corrSignals := e.correlator.Process(event)
+		for _, sig := range corrSignals {
+			zap.L().Named("engine").Debug("correlation matched",
+				zap.String("signal_type", sig.SignalType),
+			)
 			select {
 			case out <- sig:
 			case <-ctx.Done():

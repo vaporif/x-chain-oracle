@@ -71,6 +71,10 @@ func (e *Emitter) Emit(_ context.Context, sig types.Signal) error {
 		select {
 		case l.ch <- pbSig:
 			e.emitted.Add(1)
+			zap.L().Named("grpc").Debug("signal emitted",
+				zap.String("signal_id", pbSig.Id),
+				zap.String("signal_type", pbSig.SignalType),
+			)
 		default:
 			e.dropped.Add(1)
 			zap.L().Named("grpc").Debug("dropped signal for slow consumer")

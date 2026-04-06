@@ -37,6 +37,12 @@ func Enrich(ctx context.Context, ce types.ChainEvent, reg *registry.Registry, pp
 		logger.Debug("price unavailable", zap.String("token", ce.Token))
 	}
 
+	logger.Debug("event enriched",
+		zap.String("tx", ce.TxHash),
+		zap.String("contract_name", enriched.ContractName.OrElse("unknown")),
+		zap.Float64("amount_usd", enriched.AmountUSD.OrElse(0)),
+	)
+
 	return enriched
 }
 
