@@ -3,6 +3,8 @@ package evm
 import (
 	"fmt"
 
+	"github.com/wormhole-foundation/wormhole/sdk/vaa"
+
 	"github.com/vaporif/x-chain-oracle/internal/types"
 )
 
@@ -11,19 +13,19 @@ const (
 	WormholeTokenBridgeAddress = "0x3ee18B2214AFF97000D974cf647E7C347E8fa585"
 )
 
-var wormholeChainMap = map[uint16]types.ChainID{
-	1:  types.ChainSolana,
-	2:  types.ChainEthereum,
-	4:  "bsc",
-	5:  "polygon",
-	6:  "avalanche",
-	23: types.ChainArbitrum,
-	24: "optimism",
-	30: types.ChainBase,
+var wormholeChainMap = map[vaa.ChainID]types.ChainID{
+	vaa.ChainIDSolana:    types.ChainSolana,
+	vaa.ChainIDEthereum:  types.ChainEthereum,
+	vaa.ChainIDBSC:       "bsc",
+	vaa.ChainIDPolygon:   "polygon",
+	vaa.ChainIDAvalanche: "avalanche",
+	vaa.ChainIDArbitrum:  types.ChainArbitrum,
+	vaa.ChainIDOptimism:  "optimism",
+	vaa.ChainIDBase:      types.ChainBase,
 }
 
 func WormholeChainID(id uint16) types.ChainID {
-	if chain, ok := wormholeChainMap[id]; ok {
+	if chain, ok := wormholeChainMap[vaa.ChainID(id)]; ok {
 		return chain
 	}
 	return types.ChainID(fmt.Sprintf("wormhole_%d", id))

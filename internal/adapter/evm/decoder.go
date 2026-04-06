@@ -1,7 +1,6 @@
 package evm
 
 import (
-	"encoding/binary"
 	"fmt"
 	"math/big"
 	"strings"
@@ -10,6 +9,7 @@ import (
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/samber/mo"
+	"github.com/wormhole-foundation/wormhole/sdk/vaa"
 
 	"github.com/vaporif/x-chain-oracle/internal/types"
 )
@@ -45,12 +45,7 @@ func LogMessagePublishedTopicHash() common.Hash {
 	return crypto.Keccak256Hash([]byte("LogMessagePublished(address,uint64,uint32,bytes,uint8)"))
 }
 
-const (
-	logMessagePublishedMinDataLen = 160
-	wormholeTransferMinPayloadLen = 101
-	wormholePayloadTypeTransfer   = 1
-	wormholePayloadTypeWithExtra  = 3
-)
+const logMessagePublishedMinDataLen = 160
 
 func decodeWormholeLogMessagePublished(chain types.ChainID, log ethtypes.Log) mo.Result[types.RawEvent] {
 	if len(log.Topics) < 2 {
@@ -84,24 +79,21 @@ func decodeWormholeLogMessagePublished(chain types.ChainID, log ethtypes.Log) mo
 }
 
 func decodeWormholeTransferPayload(chain types.ChainID, log ethtypes.Log, payload []byte) mo.Result[types.RawEvent] {
-	if len(payload) < wormholeTransferMinPayloadLen {
-		return mo.Err[types.RawEvent](fmt.Errorf("wormhole payload too short: %d bytes, need at least %d", len(payload), wormholeTransferMinPayloadLen))
+	if !vaa.IsTransfer(payload) {
+		return mo.Err[types.RawEvent](fmt.Errorf("unsupported wormhole payload type: %d", payload[0]))
 	}
 
-	payloadType := payload[0]
-	if payloadType != wormholePayloadTypeTransfer && payloadType != wormholePayloadTypeWithExtra {
-		return mo.Err[types.RawEvent](fmt.Errorf("unsupported wormhole payload type: %d", payloadType))
+	hdr, err := vaa.DecodeTransferPayloadHdr(payload)
+	if err != nil {
+		return mo.Err[types.RawEvent](fmt.Errorf("decode wormhole transfer: %w", err))
 	}
 
-	amount := new(big.Int).SetBytes(payload[1:33])
-	tokenAddr := common.BytesToAddress(payload[33:65])
-	recipientChain := binary.BigEndian.Uint16(payload[99:101])
-
-	destChain := WormholeChainID(recipientChain)
+	tokenAddr := common.BytesToAddress(hdr.OriginAddress[:])
+	destChain := WormholeChainID(uint16(hdr.TargetChain))
 
 	data := map[string]any{
 		"token":        strings.ToLower(tokenAddr.Hex()),
-		"amount":       amount.String(),
+		"amount":       hdr.Amount.String(),
 		"sender":       common.HexToAddress(WormholeTokenBridgeAddress).Hex(),
 		"target_chain": string(destChain),
 		"contract":     log.Address.Hex(),
