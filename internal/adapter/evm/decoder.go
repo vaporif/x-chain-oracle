@@ -45,6 +45,13 @@ func LogMessagePublishedTopicHash() common.Hash {
 	return crypto.Keccak256Hash([]byte("LogMessagePublished(address,uint64,uint32,bytes,uint8)"))
 }
 
+const (
+	logMessagePublishedMinDataLen = 160
+	wormholeTransferMinPayloadLen = 101
+	wormholePayloadTypeTransfer   = 1
+	wormholePayloadTypeWithExtra  = 3
+)
+
 func decodeWormholeLogMessagePublished(chain types.ChainID, log ethtypes.Log) mo.Result[types.RawEvent] {
 	if len(log.Topics) < 2 {
 		return mo.Err[types.RawEvent](fmt.Errorf("LogMessagePublished: expected 2 topics, got %d", len(log.Topics)))
@@ -56,7 +63,7 @@ func decodeWormholeLogMessagePublished(chain types.ChainID, log ethtypes.Log) mo
 		return mo.Err[types.RawEvent](fmt.Errorf("sender %s is not Token Bridge %s", sender.Hex(), tokenBridge.Hex()))
 	}
 
-	if len(log.Data) < 160 {
+	if len(log.Data) < logMessagePublishedMinDataLen {
 		return mo.Err[types.RawEvent](fmt.Errorf("LogMessagePublished: data too short (%d bytes)", len(log.Data)))
 	}
 
@@ -77,12 +84,12 @@ func decodeWormholeLogMessagePublished(chain types.ChainID, log ethtypes.Log) mo
 }
 
 func decodeWormholeTransferPayload(chain types.ChainID, log ethtypes.Log, payload []byte) mo.Result[types.RawEvent] {
-	if len(payload) < 101 {
-		return mo.Err[types.RawEvent](fmt.Errorf("wormhole payload too short: %d bytes, need at least 101", len(payload)))
+	if len(payload) < wormholeTransferMinPayloadLen {
+		return mo.Err[types.RawEvent](fmt.Errorf("wormhole payload too short: %d bytes, need at least %d", len(payload), wormholeTransferMinPayloadLen))
 	}
 
 	payloadType := payload[0]
-	if payloadType != 1 && payloadType != 3 {
+	if payloadType != wormholePayloadTypeTransfer && payloadType != wormholePayloadTypeWithExtra {
 		return mo.Err[types.RawEvent](fmt.Errorf("unsupported wormhole payload type: %d", payloadType))
 	}
 

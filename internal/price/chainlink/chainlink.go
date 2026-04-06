@@ -19,7 +19,11 @@ import (
 	"github.com/vaporif/x-chain-oracle/internal/types"
 )
 
-const stalenessThreshold = 2 * time.Hour
+const (
+	stalenessThreshold         = 2 * time.Hour
+	abiWordSize                = 32
+	latestRoundDataResponseLen = 160 // 5 ABI words
+)
 
 type RoundData struct {
 	Answer    *big.Int
@@ -141,7 +145,7 @@ func (c *EthCaller) Decimals(ctx context.Context, feedAddr string) mo.Result[uin
 	if err != nil {
 		return mo.Err[uint8](err)
 	}
-	if len(result) < 32 {
+	if len(result) < abiWordSize {
 		return mo.Err[uint8](fmt.Errorf("unexpected decimals response length: %d", len(result)))
 	}
 	return mo.Ok(uint8(new(big.Int).SetBytes(result).Uint64()))
@@ -155,7 +159,7 @@ func (c *EthCaller) LatestRoundData(ctx context.Context, feedAddr string) mo.Res
 	if err != nil {
 		return mo.Err[RoundData](err)
 	}
-	if len(result) < 160 { // 5 ABI words: roundId, answer, startedAt, updatedAt, answeredInRound
+	if len(result) < latestRoundDataResponseLen {
 		return mo.Err[RoundData](fmt.Errorf("unexpected latestRoundData response length: %d", len(result)))
 	}
 	return mo.Ok(RoundData{

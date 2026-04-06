@@ -17,7 +17,7 @@ func NewWebSocketStrategy(client *ethclient.Client) *WebSocketStrategy {
 }
 
 func (s *WebSocketStrategy) Subscribe(ctx context.Context, filter ethereum.FilterQuery) (<-chan types.Log, ethereum.Subscription, error) {
-	logs := make(chan types.Log, 256)
+	logs := make(chan types.Log, evmEventBufferSize)
 	sub, err := s.client.SubscribeFilterLogs(ctx, filter, logs)
 	if err != nil {
 		return nil, nil, err

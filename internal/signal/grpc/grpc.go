@@ -16,6 +16,8 @@ import (
 	pb "github.com/vaporif/x-chain-oracle/proto"
 )
 
+const subscriberBufferSize = 64
+
 type listener struct {
 	filter *pb.SignalFilter
 	ch     chan *pb.Signal
@@ -86,7 +88,7 @@ func (e *Emitter) Emit(_ context.Context, sig types.Signal) error {
 func (e *Emitter) SubscribeSignals(filter *pb.SignalFilter, stream pb.OracleService_SubscribeSignalsServer) error {
 	l := &listener{
 		filter: filter,
-		ch:     make(chan *pb.Signal, 64),
+		ch:     make(chan *pb.Signal, subscriberBufferSize),
 	}
 
 	e.mu.Lock()

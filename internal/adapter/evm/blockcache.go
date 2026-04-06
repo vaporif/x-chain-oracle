@@ -6,6 +6,8 @@ import (
 	"github.com/samber/mo"
 )
 
+const blockCacheMaxSize = 100
+
 type BlockCache struct {
 	mu      sync.RWMutex
 	entries map[uint64]int64
@@ -34,8 +36,8 @@ func (c *BlockCache) Set(block uint64, timestamp int64) {
 		c.latest = block
 	}
 
-	if c.latest > 100 {
-		cutoff := c.latest - 100
+	if c.latest > blockCacheMaxSize {
+		cutoff := c.latest - blockCacheMaxSize
 		for b := range c.entries {
 			if b < cutoff {
 				delete(c.entries, b)

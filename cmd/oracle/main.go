@@ -62,10 +62,17 @@ func main() {
 	priceProvider := chainlink.New(cfg.Chainlink, httpClient, reg, types.ChainEthereum)
 	emitter := grpcemitter.NewEmitter(cfg.GRPC.Port)
 
-	rawEvents := make(chan types.RawEvent, 512)
-	chainEvents := make(chan types.ChainEvent, 256)
-	enrichedEvents := make(chan types.EnrichedEvent, 64)
-	signals := make(chan types.Signal, 32)
+	const (
+		rawEventBufferSize      = 512
+		chainEventBufferSize    = 256
+		enrichedEventBufferSize = 64
+		signalBufferSize        = 32
+	)
+
+	rawEvents := make(chan types.RawEvent, rawEventBufferSize)
+	chainEvents := make(chan types.ChainEvent, chainEventBufferSize)
+	enrichedEvents := make(chan types.EnrichedEvent, enrichedEventBufferSize)
+	signals := make(chan types.Signal, signalBufferSize)
 
 	var adapters []adapter.ChainAdapter
 	if _, ok := cfg.Chains["ethereum"]; ok {
