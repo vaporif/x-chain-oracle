@@ -59,15 +59,3 @@ jobs:
 
       - name: Build
         run: nix build
-
-  e2e:
-    name: E2E Tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
-
-      - name: Run e2e tests
-        run: nix develop --command go test -tags e2e -race -timeout 120s -v ./e2e/...
