@@ -18,5 +18,13 @@ result
 *.swp
 *~
 
+# Go
+vendor/
+
+# Foundry
+cache/
+out/
+broadcast/
+
 # OS
 .DS_Store
