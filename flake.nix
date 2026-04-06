@@ -29,15 +29,18 @@
           } ''
             export HOME=$(mktemp -d)
             export GOCACHE=$HOME/go-cache
-            export GOMODCACHE=$HOME/gomod
             export GOPATH=$HOME/gopath
             export CGO_ENABLED=1
+            export GOFLAGS="-mod=vendor"
+            export GONOSUMCHECK="*"
+            export GONOSUMDB="*"
+            export GOPROXY=off
 
             cp -r ${self}/. $HOME/src
             chmod -R u+w $HOME/src
 
-            cp -r ${package.goModules}/. $HOME/gomod
-            chmod -R u+w $HOME/gomod
+            cp -r ${package.goModules}/. $HOME/src/vendor
+            chmod -R u+w $HOME/src/vendor
 
             cd $HOME/src
             golangci-lint run ./...

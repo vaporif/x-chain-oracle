@@ -11,6 +11,7 @@ require (
 	github.com/knadh/koanf/v2 v2.3.4
 	github.com/samber/mo v1.16.0
 	github.com/stretchr/testify v1.11.1
+	github.com/wormhole-foundation/wormhole/sdk v0.0.0-20260402195318-fbe5302928da
 	go.uber.org/zap v1.27.1
 	google.golang.org/grpc v1.80.0
 	google.golang.org/protobuf v1.36.11
@@ -44,7 +45,6 @@ require (
 	github.com/supranational/blst v0.3.16 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
-	github.com/wormhole-foundation/wormhole/sdk v0.0.0-20260402195318-fbe5302928da // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel v1.40.0 // indirect
 	go.opentelemetry.io/otel/metric v1.40.0 // indirect
