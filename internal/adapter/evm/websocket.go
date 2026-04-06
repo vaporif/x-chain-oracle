@@ -9,15 +9,16 @@ import (
 )
 
 type WebSocketStrategy struct {
-	client *ethclient.Client
+	client     *ethclient.Client
+	bufferSize int
 }
 
-func NewWebSocketStrategy(client *ethclient.Client) *WebSocketStrategy {
-	return &WebSocketStrategy{client: client}
+func NewWebSocketStrategy(client *ethclient.Client, bufferSize int) *WebSocketStrategy {
+	return &WebSocketStrategy{client: client, bufferSize: bufferSize}
 }
 
 func (s *WebSocketStrategy) Subscribe(ctx context.Context, filter ethereum.FilterQuery) (<-chan types.Log, ethereum.Subscription, error) {
-	logs := make(chan types.Log, 256)
+	logs := make(chan types.Log, s.bufferSize)
 	sub, err := s.client.SubscribeFilterLogs(ctx, filter, logs)
 	if err != nil {
 		return nil, nil, err

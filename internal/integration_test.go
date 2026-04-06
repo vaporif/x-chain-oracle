@@ -293,7 +293,7 @@ func TestWormholeBridgeDepositEndToEnd(t *testing.T) {
 		EventBuffer: 256,
 		Backoff:     config.BackoffConfig{Initial: time.Second, Max: 30 * time.Second, MaxRetries: 10},
 	}
-	a := evm.New(types.ChainEthereum, cfg, reg, strategy, nil, nil)
+	a := evm.New(types.ChainEthereum, cfg, reg, strategy, nil, nil, config.DefaultTuningConfig())
 
 	rawEvents := make(chan types.RawEvent, 10)
 	chainEvents := make(chan types.ChainEvent, 10)

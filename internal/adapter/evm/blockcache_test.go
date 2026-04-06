@@ -5,10 +5,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/vaporif/x-chain-oracle/internal/adapter/evm"
+	"github.com/vaporif/x-chain-oracle/internal/config"
 )
 
 func TestBlockCacheGetSet(t *testing.T) {
-	cache := evm.NewBlockCache()
+	cache := evm.NewBlockCache(config.DefaultBlockCacheSize)
 	cache.Set(100, 1700000000)
 
 	ts, ok := cache.Get(100).Get()
@@ -17,12 +18,12 @@ func TestBlockCacheGetSet(t *testing.T) {
 }
 
 func TestBlockCacheMiss(t *testing.T) {
-	cache := evm.NewBlockCache()
+	cache := evm.NewBlockCache(config.DefaultBlockCacheSize)
 	assert.True(t, cache.Get(999).IsAbsent())
 }
 
 func TestBlockCacheEviction(t *testing.T) {
-	cache := evm.NewBlockCache()
+	cache := evm.NewBlockCache(config.DefaultBlockCacheSize)
 	cache.Set(100, 1700000000)
 	cache.Set(201, 1700001200) // 101 blocks later
 
@@ -34,7 +35,7 @@ func TestBlockCacheEviction(t *testing.T) {
 }
 
 func TestBlockCacheNoEvictionWithin100(t *testing.T) {
-	cache := evm.NewBlockCache()
+	cache := evm.NewBlockCache(config.DefaultBlockCacheSize)
 	cache.Set(100, 1700000000)
 	cache.Set(200, 1700001200) // exactly 100 blocks later
 

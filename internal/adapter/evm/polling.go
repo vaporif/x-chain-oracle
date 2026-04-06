@@ -13,16 +13,17 @@ import (
 )
 
 type PollingStrategy struct {
-	client   *ethclient.Client
-	interval time.Duration
+	client     *ethclient.Client
+	interval   time.Duration
+	bufferSize int
 }
 
-func NewPollingStrategy(client *ethclient.Client, interval time.Duration) *PollingStrategy {
-	return &PollingStrategy{client: client, interval: interval}
+func NewPollingStrategy(client *ethclient.Client, interval time.Duration, bufferSize int) *PollingStrategy {
+	return &PollingStrategy{client: client, interval: interval, bufferSize: bufferSize}
 }
 
 func (s *PollingStrategy) Subscribe(ctx context.Context, filter ethereum.FilterQuery) (<-chan types.Log, ethereum.Subscription, error) {
-	logs := make(chan types.Log, 256)
+	logs := make(chan types.Log, s.bufferSize)
 	sub := &pollingSub{
 		errCh:  make(chan error, 1),
 		cancel: func() {},

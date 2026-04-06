@@ -72,7 +72,7 @@ func main() {
 
 	var adapters []adapter.ChainAdapter
 	if _, ok := cfg.Chains["ethereum"]; ok {
-		adapters = append(adapters, evm.New(types.ChainEthereum, cfg.Chains["ethereum"], reg, nil, httpClient, tracker))
+		adapters = append(adapters, evm.New(types.ChainEthereum, cfg.Chains["ethereum"], reg, nil, httpClient, tracker, cfg.Tuning))
 	}
 
 	var wg sync.WaitGroup
