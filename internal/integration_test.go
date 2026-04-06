@@ -30,6 +30,11 @@ import (
 	"github.com/vaporif/x-chain-oracle/internal/types"
 )
 
+const (
+	testWormholeCoreAddress        = "0x98f3c9e6E3fAce36bAAd05FE09d375Ef1464288B"
+	testWormholeTokenBridgeAddress = "0x3ee18B2214AFF97000D974cf647E7C347E8fa585"
+)
+
 type mockPrice struct {
 	prices map[string]float64
 }
@@ -51,6 +56,10 @@ median_bridge_latency = "15m"
 
 [price_feeds.ethereum.USDC]
 address = "0xChainlinkUSDC"
+
+[wormhole.ethereum]
+core = "0xBridge"
+token_bridge = "0x3ee18B2214AFF97000D974cf647E7C347E8fa585"
 `
 	dir := t.TempDir()
 	path := filepath.Join(dir, "registry.toml")
@@ -263,10 +272,10 @@ func TestWormholeBridgeDepositEndToEnd(t *testing.T) {
 	amount := new(big.Int).SetUint64(60_000_000_000)
 	payload := buildWormholeTransferPayload(amount, tokenAddr, 2, 1)
 	data := buildLogMessagePublishedData(1, 0, payload, 1)
-	senderTopic := common.HexToHash("0x000000000000000000000000" + evm.WormholeTokenBridgeAddress[2:])
+	senderTopic := common.HexToHash("0x000000000000000000000000" + testWormholeTokenBridgeAddress[2:])
 
 	wormholeLog := ethtypes.Log{
-		Address:     common.HexToAddress(evm.WormholeCoreAddress),
+		Address:     common.HexToAddress(testWormholeCoreAddress),
 		Topics:      []common.Hash{crypto.Keccak256Hash([]byte("LogMessagePublished(address,uint64,uint32,bytes,uint8)")), senderTopic},
 		Data:        data,
 		BlockNumber: 18_000_000,
@@ -284,7 +293,7 @@ func TestWormholeBridgeDepositEndToEnd(t *testing.T) {
 		EventBuffer: 256,
 		Backoff:     config.BackoffConfig{Initial: time.Second, Max: 30 * time.Second, MaxRetries: 10},
 	}
-	a := evm.New(types.ChainEthereum, cfg, reg, strategy, nil)
+	a := evm.New(types.ChainEthereum, cfg, reg, strategy, nil, nil)
 
 	rawEvents := make(chan types.RawEvent, 10)
 	chainEvents := make(chan types.ChainEvent, 10)

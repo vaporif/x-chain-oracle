@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 	googlegrpc "google.golang.org/grpc"
 
+	"github.com/vaporif/x-chain-oracle/internal/status"
 	"github.com/vaporif/x-chain-oracle/internal/types"
 	pb "github.com/vaporif/x-chain-oracle/proto"
 )
@@ -26,6 +27,7 @@ type Emitter struct {
 
 	port              int
 	subscriberBufSize int
+	tracker           *status.Tracker
 	mu                sync.RWMutex
 	listeners         []*listener
 	dropped           atomic.Int64
@@ -33,8 +35,8 @@ type Emitter struct {
 	server            *googlegrpc.Server
 }
 
-func NewEmitter(port int, subscriberBufSize int) *Emitter {
-	return &Emitter{port: port, subscriberBufSize: subscriberBufSize}
+func NewEmitter(port int, subscriberBufSize int, tracker *status.Tracker) *Emitter {
+	return &Emitter{port: port, subscriberBufSize: subscriberBufSize, tracker: tracker}
 }
 
 func (e *Emitter) Start(ctx context.Context) error {
@@ -115,9 +117,22 @@ func (e *Emitter) SubscribeSignals(filter *pb.SignalFilter, stream pb.OracleServ
 }
 
 func (e *Emitter) GetStatus(_ context.Context, _ *pb.StatusRequest) (*pb.StatusResponse, error) {
-	return &pb.StatusResponse{
+	resp := &pb.StatusResponse{
 		SignalsEmitted: e.emitted.Load(),
-	}, nil
+	}
+	if e.tracker != nil {
+		chains, uptime := e.tracker.Snapshot()
+		resp.UptimeSeconds = int64(uptime.Seconds())
+		for chain, state := range chains {
+			resp.Chains = append(resp.Chains, &pb.ChainStatus{
+				ChainId:     string(chain),
+				Connected:   state.Connected,
+				LastBlock:   state.LastBlock,
+				LastEventAt: state.LastEventAt,
+			})
+		}
+	}
+	return resp, nil
 }
 
 func (e *Emitter) Run(ctx context.Context, signals <-chan types.Signal) {

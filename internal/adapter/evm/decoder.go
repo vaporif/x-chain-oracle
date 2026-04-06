@@ -20,13 +20,21 @@ type DecoderRegistry struct {
 	decoders map[common.Hash]DecoderFunc
 }
 
-func NewDecoderRegistry() *DecoderRegistry {
+func NewDecoderRegistry(tokenBridgeAddr string) *DecoderRegistry {
 	logMsgPubSig := crypto.Keccak256Hash([]byte("LogMessagePublished(address,uint64,uint32,bytes,uint8)"))
+	approvalSig := crypto.Keccak256Hash([]byte("Approval(address,address,uint256)"))
 
 	return &DecoderRegistry{
 		decoders: map[common.Hash]DecoderFunc{
-			logMsgPubSig: decodeWormholeLogMessagePublished,
+			logMsgPubSig: makeWormholeDecoder(tokenBridgeAddr),
+			approvalSig:  decodeERC20Approval,
 		},
+	}
+}
+
+func makeWormholeDecoder(tokenBridgeAddr string) DecoderFunc {
+	return func(chain types.ChainID, log ethtypes.Log) mo.Result[types.RawEvent] {
+		return decodeWormholeLogMessagePublished(chain, log, tokenBridgeAddr)
 	}
 }
 
@@ -47,13 +55,13 @@ func LogMessagePublishedTopicHash() common.Hash {
 
 const logMessagePublishedMinDataLen = 160
 
-func decodeWormholeLogMessagePublished(chain types.ChainID, log ethtypes.Log) mo.Result[types.RawEvent] {
+func decodeWormholeLogMessagePublished(chain types.ChainID, log ethtypes.Log, tokenBridgeAddr string) mo.Result[types.RawEvent] {
 	if len(log.Topics) < 2 {
 		return mo.Err[types.RawEvent](fmt.Errorf("LogMessagePublished: expected 2 topics, got %d", len(log.Topics)))
 	}
 
 	sender := common.BytesToAddress(log.Topics[1].Bytes())
-	tokenBridge := common.HexToAddress(WormholeTokenBridgeAddress)
+	tokenBridge := common.HexToAddress(tokenBridgeAddr)
 	if sender != tokenBridge {
 		return mo.Err[types.RawEvent](fmt.Errorf("sender %s is not Token Bridge %s", sender.Hex(), tokenBridge.Hex()))
 	}
@@ -75,10 +83,10 @@ func decodeWormholeLogMessagePublished(chain types.ChainID, log ethtypes.Log) mo
 
 	payload := log.Data[payloadStart : payloadStart+payloadLen]
 
-	return decodeWormholeTransferPayload(chain, log, payload)
+	return decodeWormholeTransferPayload(chain, log, payload, tokenBridgeAddr)
 }
 
-func decodeWormholeTransferPayload(chain types.ChainID, log ethtypes.Log, payload []byte) mo.Result[types.RawEvent] {
+func decodeWormholeTransferPayload(chain types.ChainID, log ethtypes.Log, payload []byte, tokenBridgeAddr string) mo.Result[types.RawEvent] {
 	if !vaa.IsTransfer(payload) {
 		return mo.Err[types.RawEvent](fmt.Errorf("unsupported wormhole payload type: %d", payload[0]))
 	}
@@ -94,7 +102,7 @@ func decodeWormholeTransferPayload(chain types.ChainID, log ethtypes.Log, payloa
 	data := map[string]any{
 		"token":        strings.ToLower(tokenAddr.Hex()),
 		"amount":       hdr.Amount.String(),
-		"sender":       common.HexToAddress(WormholeTokenBridgeAddress).Hex(),
+		"sender":       common.HexToAddress(tokenBridgeAddr).Hex(),
 		"target_chain": string(destChain),
 		"contract":     log.Address.Hex(),
 	}
@@ -105,6 +113,36 @@ func decodeWormholeTransferPayload(chain types.ChainID, log ethtypes.Log, payloa
 		TxHash:    log.TxHash.Hex(),
 		Timestamp: 0,
 		EventType: types.EventBridgeDeposit,
+		Data:      data,
+	})
+}
+
+func decodeERC20Approval(chain types.ChainID, log ethtypes.Log) mo.Result[types.RawEvent] {
+	if len(log.Topics) < 3 {
+		return mo.Err[types.RawEvent](fmt.Errorf("approval: expected 3 topics, got %d", len(log.Topics)))
+	}
+	if len(log.Data) < 32 {
+		return mo.Err[types.RawEvent](fmt.Errorf("approval: data too short (%d bytes)", len(log.Data)))
+	}
+
+	owner := common.BytesToAddress(log.Topics[1].Bytes())
+	spender := common.BytesToAddress(log.Topics[2].Bytes())
+	value := new(big.Int).SetBytes(log.Data[:32])
+
+	data := map[string]any{
+		"token":    strings.ToLower(log.Address.Hex()),
+		"sender":   owner.Hex(),
+		"spender":  spender.Hex(),
+		"amount":   value.String(),
+		"contract": log.Address.Hex(),
+	}
+
+	return mo.Ok(types.RawEvent{
+		Chain:     chain,
+		Block:     log.BlockNumber,
+		TxHash:    log.TxHash.Hex(),
+		Timestamp: 0,
+		EventType: types.EventTokenApproval,
 		Data:      data,
 	})
 }

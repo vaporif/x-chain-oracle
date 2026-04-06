@@ -8,11 +8,6 @@ import (
 	"github.com/vaporif/x-chain-oracle/internal/types"
 )
 
-const (
-	WormholeCoreAddress        = "0x98f3c9e6E3fAce36bAAd05FE09d375Ef1464288B"
-	WormholeTokenBridgeAddress = "0x3ee18B2214AFF97000D974cf647E7C347E8fa585"
-)
-
 var wormholeChainMap = map[vaa.ChainID]types.ChainID{
 	vaa.ChainIDSolana:    types.ChainSolana,
 	vaa.ChainIDEthereum:  types.ChainEthereum,

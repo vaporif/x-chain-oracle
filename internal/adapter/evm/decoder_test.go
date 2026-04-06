@@ -3,6 +3,7 @@ package evm_test
 import (
 	"encoding/binary"
 	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -12,6 +13,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/vaporif/x-chain-oracle/internal/adapter/evm"
 	"github.com/vaporif/x-chain-oracle/internal/types"
+)
+
+const (
+	testWormholeCoreAddress        = "0x98f3c9e6E3fAce36bAAd05FE09d375Ef1464288B"
+	testWormholeTokenBridgeAddress = "0x3ee18B2214AFF97000D974cf647E7C347E8fa585"
 )
 
 func buildWormholeTransferPayload(amount *big.Int, tokenAddr common.Address, tokenChain, recipientChain uint16) []byte {
@@ -35,15 +41,15 @@ func TestDecodeWormholeBridgeDeposit(t *testing.T) {
 	payload := buildWormholeTransferPayload(amount, tokenAddr, 2, 1)
 
 	data := buildLogMessagePublishedData(42, 0, payload, 1)
-	senderTopic := common.HexToHash("0x000000000000000000000000" + evm.WormholeTokenBridgeAddress[2:])
+	senderTopic := common.HexToHash("0x000000000000000000000000" + testWormholeTokenBridgeAddress[2:])
 
 	log := ethtypes.Log{
-		Address: common.HexToAddress(evm.WormholeCoreAddress),
+		Address: common.HexToAddress(testWormholeCoreAddress),
 		Topics:  []common.Hash{logMessagePublishedTopic(), senderTopic},
 		Data:    data,
 	}
 
-	registry := evm.NewDecoderRegistry()
+	registry := evm.NewDecoderRegistry(testWormholeTokenBridgeAddress)
 	rawEvent, err := registry.Decode(types.ChainEthereum, log).Get()
 	require.NoError(t, err)
 
@@ -66,15 +72,15 @@ func TestDecodeWormholeType3Payload(t *testing.T) {
 	binary.BigEndian.PutUint16(payload[99:101], 1)
 
 	data := buildLogMessagePublishedData(43, 0, payload, 1)
-	senderTopic := common.HexToHash("0x000000000000000000000000" + evm.WormholeTokenBridgeAddress[2:])
+	senderTopic := common.HexToHash("0x000000000000000000000000" + testWormholeTokenBridgeAddress[2:])
 
 	log := ethtypes.Log{
-		Address: common.HexToAddress(evm.WormholeCoreAddress),
+		Address: common.HexToAddress(testWormholeCoreAddress),
 		Topics:  []common.Hash{logMessagePublishedTopic(), senderTopic},
 		Data:    data,
 	}
 
-	registry := evm.NewDecoderRegistry()
+	registry := evm.NewDecoderRegistry(testWormholeTokenBridgeAddress)
 	rawEvent, err := registry.Decode(types.ChainEthereum, log).Get()
 	require.NoError(t, err)
 
@@ -87,7 +93,7 @@ func TestDecodeUnknownTopic(t *testing.T) {
 	log := ethtypes.Log{
 		Topics: []common.Hash{common.HexToHash("0xdeadbeef")},
 	}
-	registry := evm.NewDecoderRegistry()
+	registry := evm.NewDecoderRegistry(testWormholeTokenBridgeAddress)
 	_, err := registry.Decode(types.ChainEthereum, log).Get()
 	assert.Error(t, err)
 }
@@ -99,12 +105,12 @@ func TestDecodeNonTokenBridgeSender(t *testing.T) {
 	senderTopic := common.HexToHash("0x0000000000000000000000001111111111111111111111111111111111111111")
 
 	log := ethtypes.Log{
-		Address: common.HexToAddress(evm.WormholeCoreAddress),
+		Address: common.HexToAddress(testWormholeCoreAddress),
 		Topics:  []common.Hash{logMessagePublishedTopic(), senderTopic},
 		Data:    data,
 	}
 
-	registry := evm.NewDecoderRegistry()
+	registry := evm.NewDecoderRegistry(testWormholeTokenBridgeAddress)
 	_, err := registry.Decode(types.ChainEthereum, log).Get()
 	assert.Error(t, err)
 }
@@ -113,15 +119,60 @@ func TestDecodeTruncatedPayload(t *testing.T) {
 	payload := make([]byte, 50)
 	payload[0] = 1
 	data := buildLogMessagePublishedData(1, 0, payload, 1)
-	senderTopic := common.HexToHash("0x000000000000000000000000" + evm.WormholeTokenBridgeAddress[2:])
+	senderTopic := common.HexToHash("0x000000000000000000000000" + testWormholeTokenBridgeAddress[2:])
 
 	log := ethtypes.Log{
-		Address: common.HexToAddress(evm.WormholeCoreAddress),
+		Address: common.HexToAddress(testWormholeCoreAddress),
 		Topics:  []common.Hash{logMessagePublishedTopic(), senderTopic},
 		Data:    data,
 	}
 
-	registry := evm.NewDecoderRegistry()
+	registry := evm.NewDecoderRegistry(testWormholeTokenBridgeAddress)
+	_, err := registry.Decode(types.ChainEthereum, log).Get()
+	assert.Error(t, err)
+}
+
+func TestDecodeERC20Approval(t *testing.T) {
+	approvalSig := crypto.Keccak256Hash([]byte("Approval(address,address,uint256)"))
+	owner := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	spender := common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")
+	tokenContract := common.HexToAddress("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48")
+
+	value := new(big.Int).SetUint64(1_000_000_000)
+	valueBytes := make([]byte, 32)
+	value.FillBytes(valueBytes)
+
+	log := ethtypes.Log{
+		Address: tokenContract,
+		Topics: []common.Hash{
+			approvalSig,
+			common.BytesToHash(owner.Bytes()),
+			common.BytesToHash(spender.Bytes()),
+		},
+		Data:        valueBytes,
+		BlockNumber: 18_000_001,
+		TxHash:      common.HexToHash("0xdef456"),
+	}
+
+	registry := evm.NewDecoderRegistry(testWormholeTokenBridgeAddress)
+	rawEvent, err := registry.Decode(types.ChainEthereum, log).Get()
+	require.NoError(t, err)
+
+	assert.Equal(t, types.EventTokenApproval, rawEvent.EventType)
+	assert.Equal(t, types.ChainEthereum, rawEvent.Chain)
+	assert.Equal(t, strings.ToLower(tokenContract.Hex()), rawEvent.Data["token"])
+	assert.Equal(t, owner.Hex(), rawEvent.Data["sender"])
+	assert.Equal(t, spender.Hex(), rawEvent.Data["spender"])
+	assert.Equal(t, "1000000000", rawEvent.Data["amount"])
+}
+
+func TestDecodeApprovalTooFewTopics(t *testing.T) {
+	approvalSig := crypto.Keccak256Hash([]byte("Approval(address,address,uint256)"))
+	log := ethtypes.Log{
+		Topics: []common.Hash{approvalSig, common.HexToHash("0xaa")},
+		Data:   make([]byte, 32),
+	}
+	registry := evm.NewDecoderRegistry(testWormholeTokenBridgeAddress)
 	_, err := registry.Decode(types.ChainEthereum, log).Get()
 	assert.Error(t, err)
 }
