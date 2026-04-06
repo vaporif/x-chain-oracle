@@ -28,22 +28,22 @@ type Registry struct {
 	priceFeeds map[types.ChainID]map[string]PriceFeed
 }
 
-func (r *Registry) LookupContract(chain types.ChainID, address string) (ContractInfo, bool) {
+func (r *Registry) LookupContract(chain types.ChainID, address string) mo.Option[ContractInfo] {
 	if chainContracts, ok := r.contracts[chain]; ok {
 		if info, ok := chainContracts[address]; ok {
-			return info, true
+			return mo.Some(info)
 		}
 	}
-	return ContractInfo{}, false
+	return mo.None[ContractInfo]()
 }
 
-func (r *Registry) LookupPriceFeed(chain types.ChainID, token string) (PriceFeed, bool) {
+func (r *Registry) LookupPriceFeed(chain types.ChainID, token string) mo.Option[PriceFeed] {
 	if chainFeeds, ok := r.priceFeeds[chain]; ok {
 		if feed, ok := chainFeeds[token]; ok {
-			return feed, true
+			return mo.Some(feed)
 		}
 	}
-	return PriceFeed{}, false
+	return mo.None[PriceFeed]()
 }
 
 func (r *Registry) ContractAddresses(chain types.ChainID) []string {

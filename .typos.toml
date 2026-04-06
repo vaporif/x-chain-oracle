@@ -1,0 +1,8 @@
+[default.extend-words]
+
+[files]
+extend-exclude = [
+    "go.sum",
+    "*.pb.go",
+    "flake.lock",
+]

@@ -21,6 +21,7 @@
         env.CGO_ENABLED = 1;
       };
     in {
+      packages.default = package;
       checks = {
         lint =
           pkgs.runCommand "lint" {
@@ -56,6 +57,23 @@
             }
             touch $out
           '';
+
+        typos =
+          pkgs.runCommand "typos" {
+            nativeBuildInputs = [pkgs.typos];
+          } ''
+            cd ${self}
+            typos
+            touch $out
+          '';
+
+        nix-fmt =
+          pkgs.runCommand "nix-fmt" {
+            nativeBuildInputs = [pkgs.alejandra];
+          } ''
+            alejandra --check ${self}/flake.nix
+            touch $out
+          '';
       };
 
       devShells.default = pkgs.mkShell {
@@ -69,6 +87,10 @@
           protoc-gen-go
           protoc-gen-go-grpc
           buf
+          just
+          typos
+          alejandra
+          actionlint
         ];
 
         shellHook = ''

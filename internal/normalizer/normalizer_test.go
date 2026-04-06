@@ -25,7 +25,7 @@ func TestNormalizeEVMBridgeDeposit(t *testing.T) {
 			"target_chain": "solana",
 		},
 	}
-	event, err := normalizer.Normalize(raw)
+	event, err := normalizer.Normalize(raw).Get()
 	require.NoError(t, err)
 	assert.Equal(t, types.ChainEthereum, event.Chain)
 	assert.Equal(t, "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", event.Token)
@@ -48,7 +48,7 @@ func TestNormalizeEVMSwap(t *testing.T) {
 			"sender": "0xSwapper",
 		},
 	}
-	event, err := normalizer.Normalize(raw)
+	event, err := normalizer.Normalize(raw).Get()
 	require.NoError(t, err)
 	assert.Equal(t, types.EventDEXSwap, event.EventType)
 	assert.True(t, event.DestChain.IsAbsent())
@@ -66,7 +66,7 @@ func TestNormalizeSolanaTokenAccountCreate(t *testing.T) {
 			"owner": "SolOwner123",
 		},
 	}
-	event, err := normalizer.Normalize(raw)
+	event, err := normalizer.Normalize(raw).Get()
 	require.NoError(t, err)
 	assert.Equal(t, types.ChainSolana, event.Chain)
 	assert.Equal(t, "So11111111111111111111111111111111111111112", event.Token)
@@ -87,7 +87,7 @@ func TestNormalizeIBCSendPacket(t *testing.T) {
 			"target_chain": "osmosis",
 		},
 	}
-	event, err := normalizer.Normalize(raw)
+	event, err := normalizer.Normalize(raw).Get()
 	require.NoError(t, err)
 	assert.Equal(t, types.ChainCosmosHub, event.Chain)
 	assert.Equal(t, "uatom", event.Token)
@@ -103,6 +103,6 @@ func TestNormalizeMissingRequiredField(t *testing.T) {
 		EventType: types.EventBridgeDeposit,
 		Data:      map[string]any{},
 	}
-	_, err := normalizer.Normalize(raw)
+	_, err := normalizer.Normalize(raw).Get()
 	assert.Error(t, err)
 }

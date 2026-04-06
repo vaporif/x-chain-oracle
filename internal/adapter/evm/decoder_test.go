@@ -44,7 +44,7 @@ func TestDecodeWormholeBridgeDeposit(t *testing.T) {
 	}
 
 	registry := evm.NewDecoderRegistry()
-	rawEvent, err := registry.Decode(types.ChainEthereum, log)
+	rawEvent, err := registry.Decode(types.ChainEthereum, log).Get()
 	require.NoError(t, err)
 
 	assert.Equal(t, types.EventBridgeDeposit, rawEvent.EventType)
@@ -75,7 +75,7 @@ func TestDecodeWormholeType3Payload(t *testing.T) {
 	}
 
 	registry := evm.NewDecoderRegistry()
-	rawEvent, err := registry.Decode(types.ChainEthereum, log)
+	rawEvent, err := registry.Decode(types.ChainEthereum, log).Get()
 	require.NoError(t, err)
 
 	assert.Equal(t, types.EventBridgeDeposit, rawEvent.EventType)
@@ -88,7 +88,7 @@ func TestDecodeUnknownTopic(t *testing.T) {
 		Topics: []common.Hash{common.HexToHash("0xdeadbeef")},
 	}
 	registry := evm.NewDecoderRegistry()
-	_, err := registry.Decode(types.ChainEthereum, log)
+	_, err := registry.Decode(types.ChainEthereum, log).Get()
 	assert.Error(t, err)
 }
 
@@ -105,7 +105,7 @@ func TestDecodeNonTokenBridgeSender(t *testing.T) {
 	}
 
 	registry := evm.NewDecoderRegistry()
-	_, err := registry.Decode(types.ChainEthereum, log)
+	_, err := registry.Decode(types.ChainEthereum, log).Get()
 	assert.Error(t, err)
 }
 
@@ -122,7 +122,7 @@ func TestDecodeTruncatedPayload(t *testing.T) {
 	}
 
 	registry := evm.NewDecoderRegistry()
-	_, err := registry.Decode(types.ChainEthereum, log)
+	_, err := registry.Decode(types.ChainEthereum, log).Get()
 	assert.Error(t, err)
 }
 

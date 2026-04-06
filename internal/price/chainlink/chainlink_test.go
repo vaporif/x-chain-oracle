@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/samber/mo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vaporif/x-chain-oracle/internal/config"
@@ -23,21 +24,21 @@ type mockCaller struct {
 	callCount int
 }
 
-func (m *mockCaller) Decimals(_ context.Context, addr string) (uint8, error) {
+func (m *mockCaller) Decimals(_ context.Context, addr string) mo.Result[uint8] {
 	if d, ok := m.decimals[addr]; ok {
-		return d, nil
+		return mo.Ok(d)
 	}
-	return 0, assert.AnError
+	return mo.Err[uint8](assert.AnError)
 }
 
-func (m *mockCaller) LatestRoundData(_ context.Context, addr string) (*big.Int, *big.Int, error) {
+func (m *mockCaller) LatestRoundData(_ context.Context, addr string) mo.Result[chainlink.RoundData] {
 	m.callCount++
 	a, ok1 := m.answers[addr]
 	u, ok2 := m.updatedAt[addr]
 	if ok1 && ok2 {
-		return a, u, nil
+		return mo.Ok(chainlink.RoundData{Answer: a, UpdatedAt: u})
 	}
-	return nil, nil, assert.AnError
+	return mo.Err[chainlink.RoundData](assert.AnError)
 }
 
 func testRegistry(t *testing.T) *registry.Registry {

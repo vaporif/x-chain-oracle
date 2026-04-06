@@ -17,7 +17,7 @@ func Enrich(ctx context.Context, ce types.ChainEvent, reg *registry.Registry, pp
 	logger := zap.L().Named("enricher")
 	enriched := types.EnrichedEvent{ChainEvent: ce}
 
-	if info, ok := reg.LookupContract(ce.Chain, ce.ContractAddress); ok {
+	if info, ok := reg.LookupContract(ce.Chain, ce.ContractAddress).Get(); ok {
 		enriched.ContractName = mo.Some(info.Name)
 		enriched.Protocol = mo.Some(info.Protocol)
 	} else {

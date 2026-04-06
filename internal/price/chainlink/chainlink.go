@@ -21,9 +21,14 @@ import (
 
 const stalenessThreshold = 2 * time.Hour
 
+type RoundData struct {
+	Answer    *big.Int
+	UpdatedAt *big.Int
+}
+
 type ContractCaller interface {
-	Decimals(ctx context.Context, feedAddr string) (uint8, error)
-	LatestRoundData(ctx context.Context, feedAddr string) (*big.Int, *big.Int, error)
+	Decimals(ctx context.Context, feedAddr string) mo.Result[uint8]
+	LatestRoundData(ctx context.Context, feedAddr string) mo.Result[RoundData]
 }
 
 type cachedPrice struct {
@@ -55,7 +60,7 @@ func NewWithCaller(cfg config.ChainlinkConfig, caller ContractCaller, reg *regis
 func (p *Provider) GetPriceUSD(ctx context.Context, token string) mo.Result[float64] {
 	logger := zap.L().Named("chainlink")
 
-	feed, ok := p.reg.LookupPriceFeed(p.chain, token)
+	feed, ok := p.reg.LookupPriceFeed(p.chain, token).Get()
 	if !ok {
 		return mo.Err[float64](fmt.Errorf("no price feed for %s on %s", token, p.chain))
 	}
@@ -67,17 +72,17 @@ func (p *Provider) GetPriceUSD(ctx context.Context, token string) mo.Result[floa
 	}
 	p.mu.RUnlock()
 
-	decimals, err := p.getDecimals(ctx, feed.Address)
+	decimals, err := p.getDecimals(ctx, feed.Address).Get()
 	if err != nil {
 		return mo.Err[float64](fmt.Errorf("decimals for %s: %w", token, err))
 	}
 
-	answer, updatedAt, err := p.caller.LatestRoundData(ctx, feed.Address)
+	round, err := p.caller.LatestRoundData(ctx, feed.Address).Get()
 	if err != nil {
 		return mo.Err[float64](fmt.Errorf("latestRoundData for %s: %w", token, err))
 	}
 
-	updatedTime := time.Unix(updatedAt.Int64(), 0)
+	updatedTime := time.Unix(round.UpdatedAt.Int64(), 0)
 	if time.Since(updatedTime) > stalenessThreshold {
 		logger.Warn("stale price feed",
 			zap.String("token", token),
@@ -86,7 +91,7 @@ func (p *Provider) GetPriceUSD(ctx context.Context, token string) mo.Result[floa
 		return mo.Err[float64](fmt.Errorf("stale price for %s: updated %s ago", token, time.Since(updatedTime)))
 	}
 
-	price := new(big.Float).SetInt(answer)
+	price := new(big.Float).SetInt(round.Answer)
 	divisor := new(big.Float).SetFloat64(math.Pow10(int(decimals)))
 	price.Quo(price, divisor)
 	priceF64, _ := price.Float64()
@@ -98,23 +103,22 @@ func (p *Provider) GetPriceUSD(ctx context.Context, token string) mo.Result[floa
 	return mo.Ok(priceF64)
 }
 
-func (p *Provider) getDecimals(ctx context.Context, feedAddr string) (uint8, error) {
+func (p *Provider) getDecimals(ctx context.Context, feedAddr string) mo.Result[uint8] {
 	p.mu.RLock()
 	if d, ok := p.decimals[feedAddr]; ok {
 		p.mu.RUnlock()
-		return d, nil
+		return mo.Ok(d)
 	}
 	p.mu.RUnlock()
 
-	d, err := p.caller.Decimals(ctx, feedAddr)
-	if err != nil {
-		return 0, err
+	result := p.caller.Decimals(ctx, feedAddr)
+	if d, err := result.Get(); err == nil {
+		p.mu.Lock()
+		p.decimals[feedAddr] = d
+		p.mu.Unlock()
+		return mo.Ok(d)
 	}
-
-	p.mu.Lock()
-	p.decimals[feedAddr] = d
-	p.mu.Unlock()
-	return d, nil
+	return result
 }
 
 type EthCaller struct {
@@ -129,32 +133,33 @@ func New(cfg config.ChainlinkConfig, client *ethclient.Client, reg *registry.Reg
 	return NewWithCaller(cfg, NewEthCaller(client), reg, chain)
 }
 
-func (c *EthCaller) Decimals(ctx context.Context, feedAddr string) (uint8, error) {
+func (c *EthCaller) Decimals(ctx context.Context, feedAddr string) mo.Result[uint8] {
 	addr := common.HexToAddress(feedAddr)
 	data := common.FromHex("0x313ce567") // decimals()
 	msg := ethereum.CallMsg{To: &addr, Data: data}
 	result, err := c.client.CallContract(ctx, msg, nil)
 	if err != nil {
-		return 0, err
+		return mo.Err[uint8](err)
 	}
 	if len(result) < 32 {
-		return 0, fmt.Errorf("unexpected decimals response length: %d", len(result))
+		return mo.Err[uint8](fmt.Errorf("unexpected decimals response length: %d", len(result)))
 	}
-	return uint8(new(big.Int).SetBytes(result).Uint64()), nil
+	return mo.Ok(uint8(new(big.Int).SetBytes(result).Uint64()))
 }
 
-func (c *EthCaller) LatestRoundData(ctx context.Context, feedAddr string) (*big.Int, *big.Int, error) {
+func (c *EthCaller) LatestRoundData(ctx context.Context, feedAddr string) mo.Result[RoundData] {
 	addr := common.HexToAddress(feedAddr)
 	data := common.FromHex("0xfeaf968c") // latestRoundData()
 	msg := ethereum.CallMsg{To: &addr, Data: data}
 	result, err := c.client.CallContract(ctx, msg, nil)
 	if err != nil {
-		return nil, nil, err
+		return mo.Err[RoundData](err)
 	}
 	if len(result) < 160 { // 5 ABI words: roundId, answer, startedAt, updatedAt, answeredInRound
-		return nil, nil, fmt.Errorf("unexpected latestRoundData response length: %d", len(result))
+		return mo.Err[RoundData](fmt.Errorf("unexpected latestRoundData response length: %d", len(result)))
 	}
-	answer := new(big.Int).SetBytes(result[32:64])
-	updatedAt := new(big.Int).SetBytes(result[96:128])
-	return answer, updatedAt, nil
+	return mo.Ok(RoundData{
+		Answer:    new(big.Int).SetBytes(result[32:64]),
+		UpdatedAt: new(big.Int).SetBytes(result[96:128]),
+	})
 }

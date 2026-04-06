@@ -9,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/samber/mo"
 	"go.uber.org/zap"
 
 	"github.com/vaporif/x-chain-oracle/internal/adapter"
@@ -64,7 +65,7 @@ func (a *Adapter) Start(ctx context.Context) error {
 
 		strategy := a.strategy
 		if strategy == nil {
-			s, err := a.createStrategy()
+			s, err := a.createStrategy().Get()
 			if err != nil {
 				return err
 			}
@@ -104,24 +105,24 @@ func (a *Adapter) Start(ctx context.Context) error {
 	})
 }
 
-func (a *Adapter) createStrategy() (SubscriptionStrategy, error) {
+func (a *Adapter) createStrategy() mo.Result[SubscriptionStrategy] {
 	if a.cfg.Mode == "polling" {
 		client := a.httpClient
 		if client == nil {
 			httpURL := DeriveHTTPURL(a.cfg.RPCURL)
 			c, err := ethclient.Dial(httpURL)
 			if err != nil {
-				return nil, err
+				return mo.Err[SubscriptionStrategy](err)
 			}
 			client = c
 		}
-		return NewPollingStrategy(client, 12*time.Second), nil
+		return mo.Ok[SubscriptionStrategy](NewPollingStrategy(client, 12*time.Second))
 	}
 	client, err := ethclient.Dial(a.cfg.RPCURL)
 	if err != nil {
-		return nil, err
+		return mo.Err[SubscriptionStrategy](err)
 	}
-	return NewWebSocketStrategy(client), nil
+	return mo.Ok[SubscriptionStrategy](NewWebSocketStrategy(client))
 }
 
 func (a *Adapter) buildFilterQuery() ethereum.FilterQuery {
@@ -132,7 +133,7 @@ func (a *Adapter) buildFilterQuery() ethereum.FilterQuery {
 }
 
 func (a *Adapter) processLog(ctx context.Context, logger *zap.Logger, log ethtypes.Log) {
-	rawEvent, err := a.decoder.Decode(a.chain, log)
+	rawEvent, err := a.decoder.Decode(a.chain, log).Get()
 	if err != nil {
 		logger.Debug("skipping undecoded log",
 			zap.String("tx", log.TxHash.Hex()),
@@ -141,9 +142,9 @@ func (a *Adapter) processLog(ctx context.Context, logger *zap.Logger, log ethtyp
 		return
 	}
 
-	ts, ok := a.cache.Get(log.BlockNumber)
-	if !ok {
-		ts = a.fetchBlockTimestamp(ctx, logger, log.BlockNumber)
+	ts := a.cache.Get(log.BlockNumber).OrElse(0)
+	if ts == 0 {
+		ts = a.fetchBlockTimestamp(ctx, logger, log.BlockNumber).OrElse(0)
 		if ts > 0 {
 			a.cache.Set(log.BlockNumber, ts)
 		}
@@ -163,14 +164,14 @@ func (a *Adapter) processLog(ctx context.Context, logger *zap.Logger, log ethtyp
 	}
 }
 
-func (a *Adapter) fetchBlockTimestamp(ctx context.Context, logger *zap.Logger, block uint64) int64 {
+func (a *Adapter) fetchBlockTimestamp(ctx context.Context, logger *zap.Logger, block uint64) mo.Option[int64] {
 	client := a.httpClient
 	if client == nil {
 		httpURL := DeriveHTTPURL(a.cfg.RPCURL)
 		c, err := ethclient.DialContext(ctx, httpURL)
 		if err != nil {
 			logger.Warn("failed to dial for block header", zap.Error(err))
-			return 0
+			return mo.None[int64]()
 		}
 		defer c.Close()
 		client = c
@@ -182,9 +183,9 @@ func (a *Adapter) fetchBlockTimestamp(ctx context.Context, logger *zap.Logger, b
 			zap.Uint64("block", block),
 			zap.Error(err),
 		)
-		return 0
+		return mo.None[int64]()
 	}
-	return int64(header.Time)
+	return mo.Some(int64(header.Time))
 }
 
 func (a *Adapter) Events() <-chan types.RawEvent {

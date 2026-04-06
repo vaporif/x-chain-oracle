@@ -1,6 +1,10 @@
 package evm
 
-import "sync"
+import (
+	"sync"
+
+	"github.com/samber/mo"
+)
 
 type BlockCache struct {
 	mu      sync.RWMutex
@@ -12,11 +16,13 @@ func NewBlockCache() *BlockCache {
 	return &BlockCache{entries: make(map[uint64]int64)}
 }
 
-func (c *BlockCache) Get(block uint64) (int64, bool) {
+func (c *BlockCache) Get(block uint64) mo.Option[int64] {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	ts, ok := c.entries[block]
-	return ts, ok
+	if ts, ok := c.entries[block]; ok {
+		return mo.Some(ts)
+	}
+	return mo.None[int64]()
 }
 
 func (c *BlockCache) Set(block uint64, timestamp int64) {
