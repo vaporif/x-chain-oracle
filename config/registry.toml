@@ -7,10 +7,12 @@ median_bridge_latency = "15m"
 name = "Uniswap V3 Router"
 protocol = "uniswap"
 
-[price_feeds.ethereum.USDC]
+# USDC token contract → Chainlink USDC/USD feed
+[price_feeds.ethereum."0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"]
 address = "0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6"
 
-[price_feeds.ethereum.ETH]
+# WETH token contract → Chainlink ETH/USD feed
+[price_feeds.ethereum."0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"]
 address = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419"
 
 [contracts.ethereum."0x98f3c9e6E3fAce36bAAd05FE09d375Ef1464288B"]

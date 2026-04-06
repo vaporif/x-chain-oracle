@@ -125,10 +125,12 @@ func (a *Adapter) createStrategy() mo.Result[SubscriptionStrategy] {
 }
 
 func (a *Adapter) buildFilterQuery() ethereum.FilterQuery {
-	return ethereum.FilterQuery{
-		Addresses: []common.Address{common.HexToAddress(WormholeCoreAddress)},
-		Topics:    [][]common.Hash{{LogMessagePublishedTopicHash()}},
+	strs := a.reg.ContractAddresses(a.chain)
+	addrs := make([]common.Address, len(strs))
+	for i, s := range strs {
+		addrs[i] = common.HexToAddress(s)
 	}
+	return ethereum.FilterQuery{Addresses: addrs}
 }
 
 func (a *Adapter) processLog(ctx context.Context, logger *zap.Logger, log ethtypes.Log) {
