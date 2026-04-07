@@ -3,7 +3,6 @@ package evm
 import (
 	"context"
 	"math/big"
-	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -210,11 +209,7 @@ func (a *Adapter) processLog(ctx context.Context, logger *zap.Logger, log ethtyp
 		span.End()
 	}
 
-	traced := pipeline.Traced[types.RawEvent]{
-		Value:     rawEvent,
-		Ctx:       eventCtx,
-		StartedAt: time.Now(),
-	}
+	traced := pipeline.NewTraced(eventCtx, rawEvent)
 
 	a.tel.Metrics.EventsReceived.Add(ctx, 1,
 		otelmetric.WithAttributes(

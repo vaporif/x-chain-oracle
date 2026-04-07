@@ -266,5 +266,5 @@ func (e *Engine) wrapCorrelationSignal(parentCtx context.Context, sig types.Sign
 		ctx, span = e.tel.Tracer.Start(parentCtx, "pipeline.engine.correlate")
 		defer span.End()
 	}
-	return pipeline.Traced[types.Signal]{Value: sig, Ctx: ctx, StartedAt: time.Now()}
+	return pipeline.NewTraced(ctx, sig)
 }

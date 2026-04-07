@@ -23,7 +23,7 @@ func (t *Telemetry) ServeHTTP(ctx context.Context) (string, error) {
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"status":         "ok",
 			"uptime_seconds": int(time.Since(startedAt).Seconds()),
 		})
