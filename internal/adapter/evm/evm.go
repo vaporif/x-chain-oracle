@@ -32,9 +32,10 @@ type Adapter struct {
 	strategy   SubscriptionStrategy
 	httpClient *ethclient.Client
 	tracker    *status.Tracker
+	tuning     config.TuningConfig
 }
 
-func New(chain types.ChainID, cfg config.ChainConfig, reg *registry.Registry, strategy SubscriptionStrategy, httpClient *ethclient.Client, tracker *status.Tracker) *Adapter {
+func New(chain types.ChainID, cfg config.ChainConfig, reg *registry.Registry, strategy SubscriptionStrategy, httpClient *ethclient.Client, tracker *status.Tracker, tuning config.TuningConfig) *Adapter {
 	tokenBridgeAddr := ""
 	if reg != nil {
 		if wh, ok := reg.WormholeConfig(chain); ok {
@@ -47,10 +48,11 @@ func New(chain types.ChainID, cfg config.ChainConfig, reg *registry.Registry, st
 		reg:        reg,
 		events:     make(chan types.RawEvent, cfg.EventBuffer),
 		decoder:    NewDecoderRegistry(tokenBridgeAddr),
-		cache:      NewBlockCache(),
+		cache:      NewBlockCache(tuning.BlockCacheSize),
 		strategy:   strategy,
 		httpClient: httpClient,
 		tracker:    tracker,
+		tuning:     tuning,
 	}
 }
 
@@ -133,13 +135,13 @@ func (a *Adapter) createStrategy() mo.Result[SubscriptionStrategy] {
 			}
 			client = c
 		}
-		return mo.Ok[SubscriptionStrategy](NewPollingStrategy(client, a.cfg.PollInterval))
+		return mo.Ok[SubscriptionStrategy](NewPollingStrategy(client, a.cfg.PollInterval, a.tuning.LogChannelBuffer))
 	}
 	client, err := ethclient.Dial(a.cfg.RPCURL)
 	if err != nil {
 		return mo.Err[SubscriptionStrategy](err)
 	}
-	return mo.Ok[SubscriptionStrategy](NewWebSocketStrategy(client))
+	return mo.Ok[SubscriptionStrategy](NewWebSocketStrategy(client, a.tuning.LogChannelBuffer))
 }
 
 func (a *Adapter) buildFilterQuery() ethereum.FilterQuery {
@@ -154,6 +156,7 @@ func (a *Adapter) buildFilterQuery() ethereum.FilterQuery {
 func (a *Adapter) processLog(ctx context.Context, logger *zap.Logger, log ethtypes.Log) {
 	rawEvent, err := a.decoder.Decode(a.chain, log).Get()
 	if err != nil {
+		// TODO: replace with metrics counter
 		logger.Debug("skipping undecoded log",
 			zap.String("tx", log.TxHash.Hex()),
 			zap.Error(err),

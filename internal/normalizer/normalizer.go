@@ -10,6 +10,7 @@ import (
 )
 
 func Normalize(raw types.RawEvent) mo.Result[types.ChainEvent] {
+	logger := zap.L().Named("normalizer")
 	event := types.ChainEvent{
 		Chain:     raw.Chain,
 		Block:     raw.Block,
@@ -21,41 +22,67 @@ func Normalize(raw types.RawEvent) mo.Result[types.ChainEvent] {
 
 	switch raw.EventType {
 	case types.EventBridgeDeposit, types.EventDEXSwap, types.EventTokenApproval:
-		return normalizeEVM(event, raw.Data)
+		return normalizeEVM(event, raw.Data, logger)
 	case types.EventTokenAccCreate:
-		return normalizeSolana(event, raw.Data)
+		return normalizeSolana(event, raw.Data, logger)
 	case types.EventIBCSendPacket, types.EventIBCAckPacket:
-		return normalizeCosmos(event, raw.Data)
+		return normalizeCosmos(event, raw.Data, logger)
 	default:
 		return mo.Err[types.ChainEvent](fmt.Errorf("unknown event type: %s", raw.EventType))
 	}
 }
 
-func normalizeEVM(event types.ChainEvent, data map[string]any) mo.Result[types.ChainEvent] {
-	result := normalizeTokenEvent(event, data, "token", "sender")
+func normalizeEVM(event types.ChainEvent, data map[string]any, logger *zap.Logger) mo.Result[types.ChainEvent] {
+	result := normalizeTokenEvent(event, data, "token", "sender", logger)
 	if e, err := result.Get(); err == nil {
-		e.ContractAddress, _ = data["contract"].(string)
+		if v, ok := data["contract"].(string); ok {
+			e.ContractAddress = v
+		} else if data["contract"] != nil {
+			// TODO: replace with metrics counter
+			logger.Warn("field type assertion failed",
+				zap.String("field", "contract"),
+				zap.String("tx", e.TxHash),
+			)
+		}
 		return mo.Ok(e)
 	}
 	return result
 }
 
-func normalizeSolana(event types.ChainEvent, data map[string]any) mo.Result[types.ChainEvent] {
-	return normalizeTokenEvent(event, data, "mint", "owner")
+func normalizeSolana(event types.ChainEvent, data map[string]any, logger *zap.Logger) mo.Result[types.ChainEvent] {
+	return normalizeTokenEvent(event, data, "mint", "owner", logger)
 }
 
-func normalizeCosmos(event types.ChainEvent, data map[string]any) mo.Result[types.ChainEvent] {
-	return normalizeTokenEvent(event, data, "token", "sender")
+func normalizeCosmos(event types.ChainEvent, data map[string]any, logger *zap.Logger) mo.Result[types.ChainEvent] {
+	return normalizeTokenEvent(event, data, "token", "sender", logger)
 }
 
-func normalizeTokenEvent(event types.ChainEvent, data map[string]any, tokenKey, senderKey string) mo.Result[types.ChainEvent] {
+func normalizeTokenEvent(event types.ChainEvent, data map[string]any, tokenKey, senderKey string, logger *zap.Logger) mo.Result[types.ChainEvent] {
 	token, ok := data[tokenKey].(string)
 	if !ok {
 		return mo.Err[types.ChainEvent](fmt.Errorf("missing or invalid '%s' field", tokenKey))
 	}
 	event.Token = token
-	event.Amount, _ = data["amount"].(string)
-	event.SourceAddress, _ = data[senderKey].(string)
+
+	if v, ok := data["amount"].(string); ok {
+		event.Amount = v
+	} else if data["amount"] != nil {
+		// TODO: replace with metrics counter
+		logger.Warn("field type assertion failed",
+			zap.String("field", "amount"),
+			zap.String("tx", event.TxHash),
+		)
+	}
+
+	if v, ok := data[senderKey].(string); ok {
+		event.SourceAddress = v
+	} else if data[senderKey] != nil {
+		// TODO: replace with metrics counter
+		logger.Warn("field type assertion failed",
+			zap.String("field", senderKey),
+			zap.String("tx", event.TxHash),
+		)
+	}
 
 	if dest, ok := data["target_chain"].(string); ok {
 		event.DestChain = mo.Some(types.ChainID(dest))
@@ -74,6 +101,7 @@ func Run(ctx context.Context, in <-chan types.RawEvent, out chan<- types.ChainEv
 		}
 		event, err := Normalize(raw).Get()
 		if err != nil {
+			// TODO: replace with metrics counter
 			logger.Warn("skipping malformed event",
 				zap.String("tx", raw.TxHash),
 				zap.Error(err),

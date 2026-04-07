@@ -37,3 +37,10 @@ event_buffer = 1024
 backoff.initial = "500ms"
 backoff.max = "15s"
 backoff.max_retries = 20
+
+# Operational tuning — internal buffer and cache sizes.
+# log_channel_buffer sizes the raw log channel inside WebSocket/Polling strategies (RPC-facing).
+# This is different from per-chain event_buffer, which sizes the pipeline-facing events channel.
+[tuning]
+block_cache_size = 100
+log_channel_buffer = 256

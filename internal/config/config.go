@@ -19,6 +19,7 @@ type Config struct {
 	Engine    EngineConfig           `koanf:"engine"`
 	Pipeline  PipelineConfig         `koanf:"pipeline"`
 	Chains    map[string]ChainConfig `koanf:"chains"`
+	Tuning    TuningConfig           `koanf:"tuning"`
 }
 
 type PipelineConfig struct {
@@ -60,6 +61,23 @@ type EngineConfig struct {
 	DefaultWindowTTL time.Duration `koanf:"default_window_ttl"`
 	PruneInterval    time.Duration `koanf:"prune_interval"`
 	MaxWindowSize    int           `koanf:"max_window_size"`
+}
+
+type TuningConfig struct {
+	BlockCacheSize   int `koanf:"block_cache_size"`
+	LogChannelBuffer int `koanf:"log_channel_buffer"`
+}
+
+const (
+	DefaultBlockCacheSize   = 100
+	DefaultLogChannelBuffer = 256
+)
+
+func DefaultTuningConfig() TuningConfig {
+	return TuningConfig{
+		BlockCacheSize:   DefaultBlockCacheSize,
+		LogChannelBuffer: DefaultLogChannelBuffer,
+	}
 }
 
 func Load(path string) (*Config, error) {
@@ -119,6 +137,12 @@ func applyDefaults(cfg *Config) {
 	if cfg.Pipeline.SignalBuffer == 0 {
 		cfg.Pipeline.SignalBuffer = 32
 	}
+	if cfg.Tuning.BlockCacheSize == 0 {
+		cfg.Tuning.BlockCacheSize = DefaultBlockCacheSize
+	}
+	if cfg.Tuning.LogChannelBuffer == 0 {
+		cfg.Tuning.LogChannelBuffer = DefaultLogChannelBuffer
+	}
 	for name, chain := range cfg.Chains {
 		if chain.PollInterval == 0 {
 			chain.PollInterval = 12 * time.Second
@@ -157,6 +181,12 @@ func (c *Config) Validate() error {
 	}
 	if c.Engine.PruneInterval <= 0 {
 		return fmt.Errorf("engine.prune_interval must be > 0")
+	}
+	if c.Tuning.BlockCacheSize < 1 {
+		return fmt.Errorf("tuning.block_cache_size must be >= 1")
+	}
+	if c.Tuning.LogChannelBuffer < 1 {
+		return fmt.Errorf("tuning.log_channel_buffer must be >= 1")
 	}
 	for name, chain := range c.Chains {
 		if chain.RPCURL == "" {

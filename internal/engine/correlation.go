@@ -1,10 +1,9 @@
 package engine
 
 import (
+	"slices"
 	"sync"
 	"time"
-
-	"slices"
 
 	"go.uber.org/zap"
 
@@ -37,6 +36,7 @@ func (w *EventWindow) Add(event types.EnrichedEvent, ttl time.Duration) {
 	})
 	if w.maxSize > 0 && len(w.entries) > w.maxSize {
 		drop := len(w.entries) - w.maxSize
+		// TODO: replace with metrics counter
 		zap.L().Named("engine.correlation").Warn("window size cap reached, dropping oldest entries",
 			zap.Int("dropped", drop),
 			zap.Int("max_size", w.maxSize),
@@ -45,20 +45,24 @@ func (w *EventWindow) Add(event types.EnrichedEvent, ttl time.Duration) {
 	}
 }
 
-func (w *EventWindow) MatchingEntries(sameFields []string, event types.EnrichedEvent) []types.EnrichedEvent {
+// TakeMatchingEntries atomically removes and returns matching entries (plus expired ones).
+// A trigger always drains its matches to prevent stale accumulation, even below MinFirstCount.
+func (w *EventWindow) TakeMatchingEntries(sameFields []string, event types.EnrichedEvent) []types.EnrichedEvent {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	now := time.Now()
 	var matches []types.EnrichedEvent
-	for _, entry := range w.entries {
-		if entry.expiresAt.Before(now) {
-			continue
+	w.entries = slices.DeleteFunc(w.entries, func(e windowEntry) bool {
+		if e.expiresAt.Before(now) {
+			return true
 		}
-		if fieldsMatch(sameFields, entry.event, event) {
-			matches = append(matches, entry.event)
+		if fieldsMatch(sameFields, e.event, event) {
+			matches = append(matches, e.event)
+			return true
 		}
-	}
+		return false
+	})
 	return matches
 }
 
@@ -145,7 +149,7 @@ func (c *Correlator) Process(event types.EnrichedEvent) []types.Signal {
 				continue
 			}
 
-			matches := window.MatchingEntries(corr.SameFields, event)
+			matches := window.TakeMatchingEntries(corr.SameFields, event)
 			minCount := corr.MinFirstCount
 			if minCount <= 0 {
 				minCount = 1

@@ -246,7 +246,7 @@ func TestE2EPipeline(t *testing.T) {
 	enrichedEvents := make(chan otypes.EnrichedEvent, 64)
 	signals := make(chan otypes.Signal, 32)
 
-	adapter := evm.New(otypes.ChainEthereum, cfg.Chains["ethereum"], reg, nil, client, nil)
+	adapter := evm.New(otypes.ChainEthereum, cfg.Chains["ethereum"], reg, nil, client, nil, cfg.Tuning)
 	enr := enricher.New(reg, priceProvider, cfg.Enricher.Workers)
 	eng := engine.New(rules, engine.CorrelatorConfig{
 		DefaultWindowTTL: cfg.Engine.DefaultWindowTTL,

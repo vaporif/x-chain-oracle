@@ -172,6 +172,7 @@ func validConfig() config.Config {
 			PruneInterval:    5 * time.Second,
 			MaxWindowSize:    10000,
 		},
+		Tuning: config.DefaultTuningConfig(),
 		Chains: map[string]config.ChainConfig{
 			"ethereum": {
 				RPCURL:       "wss://eth.example.com",
@@ -210,6 +211,41 @@ backoff.initial = "1s"
 backoff.max = "30s"
 backoff.max_retries = 10
 `
+}
+
+func TestTuningValidation(t *testing.T) {
+	cfg := validConfig()
+	cfg.Tuning.BlockCacheSize = 0
+	assert.Error(t, cfg.Validate(), "BlockCacheSize=0 should fail validation")
+
+	cfg = validConfig()
+	cfg.Tuning.LogChannelBuffer = 0
+	assert.Error(t, cfg.Validate(), "LogChannelBuffer=0 should fail validation")
+}
+
+func TestTuningDefaults(t *testing.T) {
+	toml := `
+[grpc]
+port = 50051
+
+[enricher]
+workers = 4
+
+[chainlink]
+cache_ttl = "30s"
+
+[chains.ethereum]
+rpc_url = "wss://eth.example.com"
+mode = "websocket"
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	require.NoError(t, os.WriteFile(path, []byte(toml), 0644))
+
+	cfg, err := config.Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, config.DefaultBlockCacheSize, cfg.Tuning.BlockCacheSize)
+	assert.Equal(t, config.DefaultLogChannelBuffer, cfg.Tuning.LogChannelBuffer)
 }
 
 func TestEnvVarOverrideNestedBackoff(t *testing.T) {

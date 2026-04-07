@@ -9,6 +9,8 @@ import (
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 	"github.com/samber/mo"
+	"go.uber.org/zap"
+
 	"github.com/vaporif/x-chain-oracle/internal/types"
 )
 
@@ -95,6 +97,13 @@ func Load(path string) (*Registry, error) {
 			if info.RawMedianBridgeLatency != "" {
 				if d, err := time.ParseDuration(info.RawMedianBridgeLatency); err == nil {
 					info.MedianBridgeLatency = mo.Some(d)
+				} else {
+					zap.L().Named("registry").Warn("invalid median_bridge_latency, ignoring",
+						zap.String("chain", chain),
+						zap.String("address", addr),
+						zap.String("value", info.RawMedianBridgeLatency),
+						zap.Error(err),
+					)
 				}
 			}
 			reg.contracts[cid][addr] = info

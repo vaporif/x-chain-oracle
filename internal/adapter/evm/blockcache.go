@@ -6,16 +6,21 @@ import (
 	"github.com/samber/mo"
 )
 
-const blockCacheMaxSize = 100
-
 type BlockCache struct {
 	mu      sync.RWMutex
+	maxSize uint64
 	entries map[uint64]int64
 	latest  uint64
 }
 
-func NewBlockCache() *BlockCache {
-	return &BlockCache{entries: make(map[uint64]int64)}
+func NewBlockCache(maxSize int) *BlockCache {
+	if maxSize < 1 {
+		maxSize = 1
+	}
+	return &BlockCache{
+		maxSize: uint64(maxSize),
+		entries: make(map[uint64]int64),
+	}
 }
 
 func (c *BlockCache) Get(block uint64) mo.Option[int64] {
@@ -36,8 +41,8 @@ func (c *BlockCache) Set(block uint64, timestamp int64) {
 		c.latest = block
 	}
 
-	if c.latest > blockCacheMaxSize {
-		cutoff := c.latest - blockCacheMaxSize
+	if c.latest > c.maxSize {
+		cutoff := c.latest - c.maxSize
 		for b := range c.entries {
 			if b < cutoff {
 				delete(c.entries, b)
