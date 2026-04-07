@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"github.com/samber/mo"
-	"go.opentelemetry.io/otel/attribute"
-	otelmetric "go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -105,13 +103,13 @@ func Run(ctx context.Context, tel *telemetry.Telemetry, in <-chan pipeline.Trace
 		}
 
 		tel.Metrics.EventsReceived.Add(ctx, 1,
-			otelmetric.WithAttributes(attribute.String("stage", "normalizer")))
+			telemetry.StageAttr(telemetry.StageNormalizer))
 
 		start := time.Now()
 		result, err := processNormalize(tel, traced)
 		if err != nil {
 			tel.Metrics.EventsDropped.Add(ctx, 1,
-				otelmetric.WithAttributes(attribute.String("stage", "normalizer")))
+				telemetry.StageAttr(telemetry.StageNormalizer))
 			logger.Warn("skipping malformed event",
 				zap.String("tx", traced.Value.TxHash),
 				zap.Error(err),
@@ -120,7 +118,7 @@ func Run(ctx context.Context, tel *telemetry.Telemetry, in <-chan pipeline.Trace
 		}
 
 		tel.Metrics.StageLatency.Record(ctx, float64(time.Since(start).Milliseconds()),
-			otelmetric.WithAttributes(attribute.String("stage", "normalizer")))
+			telemetry.StageAttr(telemetry.StageNormalizer))
 
 		logger.Debug("event normalized",
 			zap.String("chain", string(result.Value.Chain)),
@@ -132,7 +130,7 @@ func Run(ctx context.Context, tel *telemetry.Telemetry, in <-chan pipeline.Trace
 		select {
 		case out <- result:
 			tel.Metrics.EventsEmitted.Add(ctx, 1,
-				otelmetric.WithAttributes(attribute.String("stage", "normalizer")))
+				telemetry.StageAttr(telemetry.StageNormalizer))
 		case <-ctx.Done():
 			return
 		}

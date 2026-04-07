@@ -60,7 +60,6 @@ func TestInitWithBadEndpoint(t *testing.T) {
 			ExportInterval: 10 * time.Second,
 			HistogramBuckets: config.HistogramBuckets{
 				LatencyMs: []float64{1, 5, 10, 25, 50, 100, 250, 500, 1000, 5000},
-				AmountUSD: []float64{10, 100, 1000, 10000, 100000, 1000000},
 			},
 		},
 	}

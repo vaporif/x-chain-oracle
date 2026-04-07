@@ -170,10 +170,8 @@ func (a *Adapter) processLog(ctx context.Context, logger *zap.Logger, log ethtyp
 	rawEvent, err := a.decoder.Decode(a.chain, log).Get()
 	if err != nil {
 		a.tel.Metrics.EventsDropped.Add(ctx, 1,
-			otelmetric.WithAttributes(
-				attribute.String("stage", "adapter"),
-				attribute.String("chain", string(a.chain)),
-			))
+			telemetry.StageAttr(telemetry.StageAdapter),
+			otelmetric.WithAttributes(attribute.String("chain", string(a.chain))))
 		logger.Debug("skipping undecoded log",
 			zap.String("tx", log.TxHash.Hex()),
 			zap.Error(err),
@@ -212,10 +210,8 @@ func (a *Adapter) processLog(ctx context.Context, logger *zap.Logger, log ethtyp
 	traced := pipeline.NewTraced(eventCtx, rawEvent)
 
 	a.tel.Metrics.EventsReceived.Add(ctx, 1,
-		otelmetric.WithAttributes(
-			attribute.String("stage", "adapter"),
-			attribute.String("chain", string(a.chain)),
-		))
+		telemetry.StageAttr(telemetry.StageAdapter),
+		otelmetric.WithAttributes(attribute.String("chain", string(a.chain))))
 
 	logger.Debug("raw event received",
 		zap.String("chain", string(a.chain)),

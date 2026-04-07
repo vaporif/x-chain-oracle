@@ -59,7 +59,7 @@ func (e *Enricher) Run(ctx context.Context, in <-chan pipeline.Traced[types.Chai
 
 func (e *Enricher) processEvent(ctx context.Context, traced pipeline.Traced[types.ChainEvent]) pipeline.Traced[types.EnrichedEvent] {
 	e.tel.Metrics.EventsReceived.Add(ctx, 1,
-		otelmetric.WithAttributes(attribute.String("stage", "enricher")))
+		telemetry.StageAttr(telemetry.StageEnricher))
 
 	start := time.Now()
 	eventCtx := traced.Ctx
@@ -72,9 +72,9 @@ func (e *Enricher) processEvent(ctx context.Context, traced pipeline.Traced[type
 	enriched := e.enrich(eventCtx, traced.Value)
 
 	e.tel.Metrics.StageLatency.Record(ctx, float64(time.Since(start).Milliseconds()),
-		otelmetric.WithAttributes(attribute.String("stage", "enricher")))
+		telemetry.StageAttr(telemetry.StageEnricher))
 	e.tel.Metrics.EventsEmitted.Add(ctx, 1,
-		otelmetric.WithAttributes(attribute.String("stage", "enricher")))
+		telemetry.StageAttr(telemetry.StageEnricher))
 
 	return pipeline.Traced[types.EnrichedEvent]{Value: enriched, Ctx: eventCtx, StartedAt: traced.StartedAt}
 }

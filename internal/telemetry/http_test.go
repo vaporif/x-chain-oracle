@@ -30,7 +30,6 @@ func TestHTTPHealthz(t *testing.T) {
 			ExportInterval: 10 * time.Second,
 			HistogramBuckets: config.HistogramBuckets{
 				LatencyMs: []float64{1, 10, 100},
-				AmountUSD: []float64{10, 1000},
 			},
 		},
 	}
@@ -71,7 +70,6 @@ func TestHTTPMetrics(t *testing.T) {
 			ExportInterval: 10 * time.Second,
 			HistogramBuckets: config.HistogramBuckets{
 				LatencyMs: []float64{1, 10, 100},
-				AmountUSD: []float64{10, 1000},
 			},
 		},
 	}

@@ -102,7 +102,6 @@ type MetricsConfig struct {
 
 type HistogramBuckets struct {
 	LatencyMs []float64 `koanf:"latency_ms"`
-	AmountUSD []float64 `koanf:"amount_usd"`
 }
 
 const (
@@ -233,9 +232,6 @@ func applyDefaults(cfg *Config) {
 	}
 	if len(cfg.Telemetry.Metrics.HistogramBuckets.LatencyMs) == 0 {
 		cfg.Telemetry.Metrics.HistogramBuckets.LatencyMs = []float64{1, 5, 10, 25, 50, 100, 250, 500, 1000, 5000}
-	}
-	if len(cfg.Telemetry.Metrics.HistogramBuckets.AmountUSD) == 0 {
-		cfg.Telemetry.Metrics.HistogramBuckets.AmountUSD = []float64{10, 100, 1000, 10000, 100000, 1000000}
 	}
 }
 

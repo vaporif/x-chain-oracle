@@ -70,4 +70,3 @@ export_interval = "10s"
 
 [telemetry.metrics.histogram_buckets]
 latency_ms = [1, 5, 10, 25, 50, 100, 250, 500, 1000, 5000]
-amount_usd = [10, 100, 1000, 10000, 100000, 1000000]

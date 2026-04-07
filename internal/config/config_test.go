@@ -305,7 +305,6 @@ rpc_url = "wss://eth.example.com"
 	assert.True(t, cfg.Telemetry.Tracing.Stages.Emitter)
 	assert.Equal(t, 10*time.Second, cfg.Telemetry.Metrics.ExportInterval)
 	assert.Equal(t, []float64{1, 5, 10, 25, 50, 100, 250, 500, 1000, 5000}, cfg.Telemetry.Metrics.HistogramBuckets.LatencyMs)
-	assert.Equal(t, []float64{10, 100, 1000, 10000, 100000, 1000000}, cfg.Telemetry.Metrics.HistogramBuckets.AmountUSD)
 }
 
 func TestTelemetryConfigValidation(t *testing.T) {

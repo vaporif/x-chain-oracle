@@ -123,6 +123,7 @@ func InitNoop() *Telemetry {
 	}
 }
 
+// NewForTest creates a Telemetry with injected providers, bypassing OTLP setup. Test-only.
 func NewForTest(tracer trace.Tracer, metrics *Metrics, cfg config.TelemetryConfig) *Telemetry {
 	return &Telemetry{
 		Tracer:  tracer,

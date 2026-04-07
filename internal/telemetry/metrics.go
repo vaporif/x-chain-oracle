@@ -3,10 +3,23 @@ package telemetry
 import (
 	noopmetric "go.opentelemetry.io/otel/metric/noop"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/vaporif/x-chain-oracle/internal/config"
 )
+
+const (
+	StageAdapter    = "adapter"
+	StageNormalizer = "normalizer"
+	StageEnricher   = "enricher"
+	StageEngine     = "engine"
+	StageEmitter    = "emitter"
+)
+
+func StageAttr(stage string) metric.MeasurementOption {
+	return metric.WithAttributes(attribute.String("stage", stage))
+}
 
 type Metrics struct {
 	// Pipeline throughput
@@ -105,7 +118,6 @@ func newNoopMetrics() *Metrics {
 	npm := noopmetric.NewMeterProvider().Meter("noop")
 	m, _ := newMetrics(npm, config.HistogramBuckets{
 		LatencyMs: []float64{1},
-		AmountUSD: []float64{1},
 	})
 	return m
 }

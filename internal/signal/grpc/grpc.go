@@ -159,7 +159,7 @@ func (e *Emitter) Run(ctx context.Context, signals <-chan pipeline.Traced[types.
 		}
 
 		e.tel.Metrics.EventsReceived.Add(ctx, 1,
-			otelmetric.WithAttributes(attribute.String("stage", "emitter")))
+			telemetry.StageAttr(telemetry.StageEmitter))
 
 		var span trace.Span
 		emitCtx := traced.Ctx

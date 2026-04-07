@@ -191,7 +191,7 @@ func (e *Engine) Run(ctx context.Context, in <-chan pipeline.Traced[types.Enrich
 		}
 
 		e.tel.Metrics.EventsReceived.Add(ctx, 1,
-			otelmetric.WithAttributes(attribute.String("stage", "engine")))
+			telemetry.StageAttr(telemetry.StageEngine))
 
 		start := time.Now()
 
@@ -199,7 +199,7 @@ func (e *Engine) Run(ctx context.Context, in <-chan pipeline.Traced[types.Enrich
 			select {
 			case out <- sig:
 				e.tel.Metrics.EventsEmitted.Add(ctx, 1,
-					otelmetric.WithAttributes(attribute.String("stage", "engine")))
+					telemetry.StageAttr(telemetry.StageEngine))
 			case <-ctx.Done():
 				return
 			}
@@ -212,14 +212,14 @@ func (e *Engine) Run(ctx context.Context, in <-chan pipeline.Traced[types.Enrich
 			select {
 			case out <- sig:
 				e.tel.Metrics.EventsEmitted.Add(ctx, 1,
-					otelmetric.WithAttributes(attribute.String("stage", "engine")))
+					telemetry.StageAttr(telemetry.StageEngine))
 			case <-ctx.Done():
 				return
 			}
 		}
 
 		e.tel.Metrics.StageLatency.Record(ctx, float64(time.Since(start).Milliseconds()),
-			otelmetric.WithAttributes(attribute.String("stage", "engine")))
+			telemetry.StageAttr(telemetry.StageEngine))
 		e.tel.Metrics.CorrelationsOpen.Record(ctx, e.correlator.OpenEntries())
 	}
 }
