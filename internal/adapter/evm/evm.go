@@ -125,6 +125,8 @@ func (a *Adapter) Start(ctx context.Context) error {
 				a.processLog(ctx, logger, log)
 			case err := <-sub.Err():
 				if err != nil {
+					a.tel.Metrics.ReconnectCount.Add(ctx, 1,
+						otelmetric.WithAttributes(attribute.String("chain", string(a.chain))))
 					logger.Warn("subscription error, will reconnect", zap.Error(err))
 					return err
 				}

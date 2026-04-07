@@ -101,12 +101,11 @@ func newMetrics(meter metric.Meter, buckets config.HistogramBuckets) (*Metrics, 
 	return m, nil
 }
 
-func newNoopMetrics(meter metric.Meter) *Metrics {
+func newNoopMetrics() *Metrics {
 	npm := noopmetric.NewMeterProvider().Meter("noop")
 	m, _ := newMetrics(npm, config.HistogramBuckets{
 		LatencyMs: []float64{1},
 		AmountUSD: []float64{1},
 	})
-	_ = meter
 	return m
 }

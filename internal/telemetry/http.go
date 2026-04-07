@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.uber.org/zap"
 )
 
 var startedAt = time.Now()
@@ -39,7 +40,11 @@ func (t *Telemetry) ServeHTTP(ctx context.Context) (string, error) {
 		<-ctx.Done()
 		server.Close()
 	}()
-	go server.Serve(ln)
+	go func() {
+		if err := server.Serve(ln); err != nil && err != http.ErrServerClosed {
+			zap.L().Named("telemetry.http").Error("server error", zap.Error(err))
+		}
+	}()
 
 	return ln.Addr().String(), nil
 }

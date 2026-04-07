@@ -109,18 +109,16 @@ func (e *Emitter) SubscribeSignals(filter *pb.SignalFilter, stream pb.OracleServ
 
 	e.mu.Lock()
 	e.listeners = append(e.listeners, l)
-	e.mu.Unlock()
-
 	e.tel.Metrics.ActiveSubscribers.Record(context.Background(), int64(len(e.listeners)))
+	e.mu.Unlock()
 
 	defer func() {
 		e.mu.Lock()
 		e.listeners = slices.DeleteFunc(e.listeners, func(existing *listener) bool {
 			return existing == l
 		})
-		e.mu.Unlock()
-
 		e.tel.Metrics.ActiveSubscribers.Record(context.Background(), int64(len(e.listeners)))
+		e.mu.Unlock()
 	}()
 
 	for {

@@ -199,8 +199,10 @@ func applyDefaults(cfg *Config) {
 		cfg.Chains[name] = chain
 	}
 
-	// Telemetry defaults
-	if !cfg.Telemetry.Enabled && cfg.Telemetry.OTLPEndpoint == "" && cfg.Telemetry.HTTPPort == 0 {
+	// Telemetry defaults — enable when no telemetry section was configured at all.
+	// Once any telemetry field is set, the user controls Enabled explicitly.
+	if !cfg.Telemetry.Enabled && cfg.Telemetry.OTLPEndpoint == "" &&
+		cfg.Telemetry.HTTPPort == 0 && cfg.Telemetry.ServiceName == "" {
 		cfg.Telemetry.Enabled = true
 	}
 	if cfg.Telemetry.OTLPEndpoint == "" {

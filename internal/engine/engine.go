@@ -213,6 +213,7 @@ func (e *Engine) Run(ctx context.Context, in <-chan pipeline.Traced[types.Enrich
 
 		e.tel.Metrics.StageLatency.Record(ctx, float64(time.Since(start).Milliseconds()),
 			otelmetric.WithAttributes(attribute.String("stage", "engine")))
+		e.tel.Metrics.CorrelationsOpen.Record(ctx, e.correlator.OpenEntries())
 	}
 }
 

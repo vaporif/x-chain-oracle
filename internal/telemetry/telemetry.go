@@ -6,7 +6,6 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/prometheus"
-	noopmetric "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -117,10 +116,9 @@ func Init(ctx context.Context, cfg config.TelemetryConfig) (*Telemetry, error) {
 
 func InitNoop() *Telemetry {
 	tp := nooptrace.NewTracerProvider()
-	mp := noopmetric.NewMeterProvider()
 	return &Telemetry{
 		Tracer:  tp.Tracer("noop"),
-		Metrics: newNoopMetrics(mp.Meter("noop")),
+		Metrics: newNoopMetrics(),
 		Config:  config.TelemetryConfig{},
 	}
 }

@@ -66,6 +66,12 @@ func (w *EventWindow) TakeMatchingEntries(sameFields []string, event types.Enric
 	return matches
 }
 
+func (w *EventWindow) Size() int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return len(w.entries)
+}
+
 func (w *EventWindow) Prune() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -114,6 +120,14 @@ func NewCorrelator(correlations []Correlation, cfg CorrelatorConfig) *Correlator
 	}
 	c.correlations = correlations
 	return c
+}
+
+func (c *Correlator) OpenEntries() int64 {
+	var total int64
+	for _, w := range c.windows {
+		total += int64(w.Size())
+	}
+	return total
 }
 
 func (c *Correlator) StartPruner(done <-chan struct{}) {

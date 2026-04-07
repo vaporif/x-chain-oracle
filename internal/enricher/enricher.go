@@ -69,7 +69,7 @@ func (e *Enricher) processEvent(ctx context.Context, traced pipeline.Traced[type
 		defer span.End()
 	}
 
-	enriched := e.enrich(ctx, traced.Value)
+	enriched := e.enrich(eventCtx, traced.Value)
 
 	e.tel.Metrics.StageLatency.Record(ctx, float64(time.Since(start).Milliseconds()),
 		otelmetric.WithAttributes(attribute.String("stage", "enricher")))
