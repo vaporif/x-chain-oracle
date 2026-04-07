@@ -6,13 +6,19 @@ import (
 	"net"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"slices"
 
+	"go.opentelemetry.io/otel/attribute"
+	otelmetric "go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	googlegrpc "google.golang.org/grpc"
 
+	"github.com/vaporif/x-chain-oracle/internal/pipeline"
 	"github.com/vaporif/x-chain-oracle/internal/status"
+	"github.com/vaporif/x-chain-oracle/internal/telemetry"
 	"github.com/vaporif/x-chain-oracle/internal/types"
 	pb "github.com/vaporif/x-chain-oracle/proto"
 )
@@ -28,6 +34,7 @@ type Emitter struct {
 	port              int
 	subscriberBufSize int
 	tracker           *status.Tracker
+	tel               *telemetry.Telemetry
 	mu                sync.RWMutex
 	listeners         []*listener
 	dropped           atomic.Int64
@@ -35,8 +42,8 @@ type Emitter struct {
 	server            *googlegrpc.Server
 }
 
-func NewEmitter(port int, subscriberBufSize int, tracker *status.Tracker) *Emitter {
-	return &Emitter{port: port, subscriberBufSize: subscriberBufSize, tracker: tracker}
+func NewEmitter(port int, subscriberBufSize int, tracker *status.Tracker, tel *telemetry.Telemetry) *Emitter {
+	return &Emitter{port: port, subscriberBufSize: subscriberBufSize, tracker: tracker, tel: tel}
 }
 
 func (e *Emitter) Start(ctx context.Context) error {
@@ -44,7 +51,13 @@ func (e *Emitter) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	e.server = googlegrpc.NewServer()
+
+	var opts []googlegrpc.ServerOption
+	if handler := e.tel.GRPCStatsHandler(); handler != nil {
+		opts = append(opts, googlegrpc.StatsHandler(handler))
+	}
+
+	e.server = googlegrpc.NewServer(opts...)
 	pb.RegisterOracleServiceServer(e.server, e)
 
 	go func() {
@@ -74,12 +87,14 @@ func (e *Emitter) Emit(_ context.Context, sig types.Signal) error {
 		select {
 		case l.ch <- pbSig:
 			e.emitted.Add(1)
+			e.tel.Metrics.SignalsEmitted.Add(context.Background(), 1)
 			zap.L().Named("grpc").Debug("signal emitted",
 				zap.String("signal_id", pbSig.Id),
 				zap.String("signal_type", pbSig.SignalType),
 			)
 		default:
 			e.dropped.Add(1)
+			e.tel.Metrics.SignalsDropped.Add(context.Background(), 1)
 			zap.L().Named("grpc").Debug("dropped signal for slow consumer")
 		}
 	}
@@ -96,12 +111,16 @@ func (e *Emitter) SubscribeSignals(filter *pb.SignalFilter, stream pb.OracleServ
 	e.listeners = append(e.listeners, l)
 	e.mu.Unlock()
 
+	e.tel.Metrics.ActiveSubscribers.Record(context.Background(), int64(len(e.listeners)))
+
 	defer func() {
 		e.mu.Lock()
 		e.listeners = slices.DeleteFunc(e.listeners, func(existing *listener) bool {
 			return existing == l
 		})
 		e.mu.Unlock()
+
+		e.tel.Metrics.ActiveSubscribers.Record(context.Background(), int64(len(e.listeners)))
 	}()
 
 	for {
@@ -135,13 +154,31 @@ func (e *Emitter) GetStatus(_ context.Context, _ *pb.StatusRequest) (*pb.StatusR
 	return resp, nil
 }
 
-func (e *Emitter) Run(ctx context.Context, signals <-chan types.Signal) {
-	for sig := range signals {
+func (e *Emitter) Run(ctx context.Context, signals <-chan pipeline.Traced[types.Signal]) {
+	for traced := range signals {
 		if ctx.Err() != nil {
 			return
 		}
-		if err := e.Emit(ctx, sig); err != nil {
+
+		e.tel.Metrics.EventsReceived.Add(ctx, 1,
+			otelmetric.WithAttributes(attribute.String("stage", "emitter")))
+
+		var span trace.Span
+		emitCtx := traced.Ctx
+		if e.tel.Config.Tracing.Stages.Emitter {
+			emitCtx, span = e.tel.Tracer.Start(traced.Ctx, "pipeline.emitter")
+		}
+
+		if err := e.Emit(emitCtx, traced.Value); err != nil {
 			zap.L().Named("grpc").Error("emit failed", zap.Error(err))
+		}
+
+		e.tel.Metrics.PipelineLatency.Record(ctx,
+			float64(time.Since(traced.StartedAt).Milliseconds()),
+			otelmetric.WithAttributes(attribute.String("signal_type", traced.Value.SignalType)))
+
+		if span != nil {
+			span.End()
 		}
 	}
 }

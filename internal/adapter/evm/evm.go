@@ -3,18 +3,24 @@ package evm
 import (
 	"context"
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/samber/mo"
+	"go.opentelemetry.io/otel/attribute"
+	otelmetric "go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/vaporif/x-chain-oracle/internal/adapter"
 	"github.com/vaporif/x-chain-oracle/internal/config"
+	"github.com/vaporif/x-chain-oracle/internal/pipeline"
 	"github.com/vaporif/x-chain-oracle/internal/registry"
 	"github.com/vaporif/x-chain-oracle/internal/status"
+	"github.com/vaporif/x-chain-oracle/internal/telemetry"
 	"github.com/vaporif/x-chain-oracle/internal/types"
 )
 
@@ -26,16 +32,17 @@ type Adapter struct {
 	chain      types.ChainID
 	cfg        config.ChainConfig
 	reg        *registry.Registry
-	events     chan types.RawEvent
+	events     chan pipeline.Traced[types.RawEvent]
 	decoder    *DecoderRegistry
 	cache      *BlockCache
 	strategy   SubscriptionStrategy
 	httpClient *ethclient.Client
 	tracker    *status.Tracker
 	tuning     config.TuningConfig
+	tel        *telemetry.Telemetry
 }
 
-func New(chain types.ChainID, cfg config.ChainConfig, reg *registry.Registry, strategy SubscriptionStrategy, httpClient *ethclient.Client, tracker *status.Tracker, tuning config.TuningConfig) *Adapter {
+func New(chain types.ChainID, cfg config.ChainConfig, reg *registry.Registry, strategy SubscriptionStrategy, httpClient *ethclient.Client, tracker *status.Tracker, tuning config.TuningConfig, tel *telemetry.Telemetry) *Adapter {
 	tokenBridgeAddr := ""
 	if reg != nil {
 		if wh, ok := reg.WormholeConfig(chain); ok {
@@ -46,13 +53,14 @@ func New(chain types.ChainID, cfg config.ChainConfig, reg *registry.Registry, st
 		chain:      chain,
 		cfg:        cfg,
 		reg:        reg,
-		events:     make(chan types.RawEvent, cfg.EventBuffer),
+		events:     make(chan pipeline.Traced[types.RawEvent], cfg.EventBuffer),
 		decoder:    NewDecoderRegistry(tokenBridgeAddr),
 		cache:      NewBlockCache(tuning.BlockCacheSize),
 		strategy:   strategy,
 		httpClient: httpClient,
 		tracker:    tracker,
 		tuning:     tuning,
+		tel:        tel,
 	}
 }
 
@@ -62,6 +70,8 @@ func (a *Adapter) Start(ctx context.Context) error {
 		if a.tracker != nil {
 			a.tracker.SetConnected(a.chain, false)
 		}
+		a.tel.Metrics.ConnectionStatus.Record(context.Background(), 0,
+			otelmetric.WithAttributes(attribute.String("chain", string(a.chain))))
 	}()
 	logger := zap.L().Named("evm")
 
@@ -98,6 +108,8 @@ func (a *Adapter) Start(ctx context.Context) error {
 		if a.tracker != nil {
 			a.tracker.SetConnected(a.chain, true)
 		}
+		a.tel.Metrics.ConnectionStatus.Record(ctx, 1,
+			otelmetric.WithAttributes(attribute.String("chain", string(a.chain))))
 
 		logger.Info("subscribed to logs",
 			zap.String("chain", string(a.chain)),
@@ -156,7 +168,11 @@ func (a *Adapter) buildFilterQuery() ethereum.FilterQuery {
 func (a *Adapter) processLog(ctx context.Context, logger *zap.Logger, log ethtypes.Log) {
 	rawEvent, err := a.decoder.Decode(a.chain, log).Get()
 	if err != nil {
-		// TODO: replace with metrics counter
+		a.tel.Metrics.EventsDropped.Add(ctx, 1,
+			otelmetric.WithAttributes(
+				attribute.String("stage", "adapter"),
+				attribute.String("chain", string(a.chain)),
+			))
 		logger.Debug("skipping undecoded log",
 			zap.String("tx", log.TxHash.Hex()),
 			zap.Error(err),
@@ -177,6 +193,33 @@ func (a *Adapter) processLog(ctx context.Context, logger *zap.Logger, log ethtyp
 		a.tracker.UpdateBlock(a.chain, log.BlockNumber, rawEvent.Timestamp)
 	}
 
+	a.tel.Metrics.BlocksProcessed.Add(ctx, 1,
+		otelmetric.WithAttributes(attribute.String("chain", string(a.chain))))
+
+	eventCtx := ctx
+	if a.tel.Config.Tracing.Stages.Adapter {
+		var span trace.Span
+		eventCtx, span = a.tel.Tracer.Start(ctx, "pipeline.adapter",
+			trace.WithAttributes(
+				attribute.String("chain", string(a.chain)),
+				attribute.String("event_type", string(rawEvent.EventType)),
+				attribute.Int64("block", int64(log.BlockNumber)),
+			))
+		span.End()
+	}
+
+	traced := pipeline.Traced[types.RawEvent]{
+		Value:     rawEvent,
+		Ctx:       eventCtx,
+		StartedAt: time.Now(),
+	}
+
+	a.tel.Metrics.EventsReceived.Add(ctx, 1,
+		otelmetric.WithAttributes(
+			attribute.String("stage", "adapter"),
+			attribute.String("chain", string(a.chain)),
+		))
+
 	logger.Debug("raw event received",
 		zap.String("chain", string(a.chain)),
 		zap.Uint64("block", log.BlockNumber),
@@ -185,7 +228,7 @@ func (a *Adapter) processLog(ctx context.Context, logger *zap.Logger, log ethtyp
 	)
 
 	select {
-	case a.events <- rawEvent:
+	case a.events <- traced:
 	case <-ctx.Done():
 	}
 }
@@ -214,7 +257,7 @@ func (a *Adapter) fetchBlockTimestamp(ctx context.Context, logger *zap.Logger, b
 	return mo.Some(int64(header.Time))
 }
 
-func (a *Adapter) Events() <-chan types.RawEvent {
+func (a *Adapter) Events() <-chan pipeline.Traced[types.RawEvent] {
 	return a.events
 }
 

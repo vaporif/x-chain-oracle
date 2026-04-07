@@ -20,6 +20,7 @@ type Config struct {
 	Pipeline  PipelineConfig         `koanf:"pipeline"`
 	Chains    map[string]ChainConfig `koanf:"chains"`
 	Tuning    TuningConfig           `koanf:"tuning"`
+	Telemetry TelemetryConfig        `koanf:"telemetry"`
 }
 
 type PipelineConfig struct {
@@ -66,6 +67,42 @@ type EngineConfig struct {
 type TuningConfig struct {
 	BlockCacheSize   int `koanf:"block_cache_size"`
 	LogChannelBuffer int `koanf:"log_channel_buffer"`
+}
+
+type TelemetryConfig struct {
+	Enabled        bool          `koanf:"enabled"`
+	OTLPEndpoint   string        `koanf:"otlp_endpoint"`
+	OTLPInsecure   bool          `koanf:"otlp_insecure"`
+	HTTPPort       int           `koanf:"http_port"`
+	ServiceName    string        `koanf:"service_name"`
+	ServiceVersion string        `koanf:"service_version"`
+	Environment    string        `koanf:"environment"`
+	Tracing        TracingConfig `koanf:"tracing"`
+	Metrics        MetricsConfig `koanf:"metrics"`
+}
+
+type TracingConfig struct {
+	SampleRatio  float64       `koanf:"sample_ratio"`
+	BatchTimeout time.Duration `koanf:"batch_timeout"`
+	Stages       StageToggles  `koanf:"stages"`
+}
+
+type StageToggles struct {
+	Adapter    bool `koanf:"adapter"`
+	Normalizer bool `koanf:"normalizer"`
+	Enricher   bool `koanf:"enricher"`
+	Engine     bool `koanf:"engine"`
+	Emitter    bool `koanf:"emitter"`
+}
+
+type MetricsConfig struct {
+	ExportInterval   time.Duration    `koanf:"export_interval"`
+	HistogramBuckets HistogramBuckets `koanf:"histogram_buckets"`
+}
+
+type HistogramBuckets struct {
+	LatencyMs []float64 `koanf:"latency_ms"`
+	AmountUSD []float64 `koanf:"amount_usd"`
 }
 
 const (
@@ -161,6 +198,43 @@ func applyDefaults(cfg *Config) {
 		}
 		cfg.Chains[name] = chain
 	}
+
+	// Telemetry defaults
+	if !cfg.Telemetry.Enabled && cfg.Telemetry.OTLPEndpoint == "" && cfg.Telemetry.HTTPPort == 0 {
+		cfg.Telemetry.Enabled = true
+	}
+	if cfg.Telemetry.OTLPEndpoint == "" {
+		cfg.Telemetry.OTLPEndpoint = "localhost:4317"
+	}
+	if cfg.Telemetry.HTTPPort == 0 {
+		cfg.Telemetry.HTTPPort = 9090
+	}
+	if cfg.Telemetry.ServiceName == "" {
+		cfg.Telemetry.ServiceName = "x-chain-oracle"
+	}
+	if cfg.Telemetry.Tracing.SampleRatio == 0 {
+		cfg.Telemetry.Tracing.SampleRatio = 1.0
+	}
+	if cfg.Telemetry.Tracing.BatchTimeout == 0 {
+		cfg.Telemetry.Tracing.BatchTimeout = 5 * time.Second
+	}
+	// Stage toggles default to true
+	if !cfg.Telemetry.Tracing.Stages.Adapter && !cfg.Telemetry.Tracing.Stages.Normalizer &&
+		!cfg.Telemetry.Tracing.Stages.Enricher && !cfg.Telemetry.Tracing.Stages.Engine &&
+		!cfg.Telemetry.Tracing.Stages.Emitter {
+		cfg.Telemetry.Tracing.Stages = StageToggles{
+			Adapter: true, Normalizer: true, Enricher: true, Engine: true, Emitter: true,
+		}
+	}
+	if cfg.Telemetry.Metrics.ExportInterval == 0 {
+		cfg.Telemetry.Metrics.ExportInterval = 10 * time.Second
+	}
+	if len(cfg.Telemetry.Metrics.HistogramBuckets.LatencyMs) == 0 {
+		cfg.Telemetry.Metrics.HistogramBuckets.LatencyMs = []float64{1, 5, 10, 25, 50, 100, 250, 500, 1000, 5000}
+	}
+	if len(cfg.Telemetry.Metrics.HistogramBuckets.AmountUSD) == 0 {
+		cfg.Telemetry.Metrics.HistogramBuckets.AmountUSD = []float64{10, 100, 1000, 10000, 100000, 1000000}
+	}
 }
 
 func (c *Config) Validate() error {
@@ -194,6 +268,17 @@ func (c *Config) Validate() error {
 		}
 		if chain.PollInterval <= 0 {
 			return fmt.Errorf("chains.%s.poll_interval must be > 0", name)
+		}
+	}
+	if c.Telemetry.Enabled {
+		if c.Telemetry.HTTPPort < 1 || c.Telemetry.HTTPPort > 65535 {
+			return fmt.Errorf("telemetry.http_port must be 1-65535, got %d", c.Telemetry.HTTPPort)
+		}
+		if c.Telemetry.HTTPPort == c.GRPC.Port {
+			return fmt.Errorf("telemetry.http_port must differ from grpc.port (%d)", c.GRPC.Port)
+		}
+		if c.Telemetry.Tracing.SampleRatio < 0 || c.Telemetry.Tracing.SampleRatio > 1.0 {
+			return fmt.Errorf("telemetry.tracing.sample_ratio must be 0.0-1.0, got %f", c.Telemetry.Tracing.SampleRatio)
 		}
 	}
 	return nil

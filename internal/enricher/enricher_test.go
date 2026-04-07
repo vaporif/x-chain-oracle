@@ -11,7 +11,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vaporif/x-chain-oracle/internal/enricher"
+	"github.com/vaporif/x-chain-oracle/internal/pipeline"
 	"github.com/vaporif/x-chain-oracle/internal/registry"
+	"github.com/vaporif/x-chain-oracle/internal/telemetry"
 	"github.com/vaporif/x-chain-oracle/internal/types"
 )
 
@@ -88,25 +90,25 @@ func TestEnricherPipeline(t *testing.T) {
 	reg := newTestRegistry(t)
 	pp := &mockPriceProvider{prices: map[string]float64{"USDC": 1.0}}
 
-	in := make(chan types.ChainEvent, 2)
-	out := make(chan types.EnrichedEvent, 2)
+	in := make(chan pipeline.Traced[types.ChainEvent], 2)
+	out := make(chan pipeline.Traced[types.EnrichedEvent], 2)
 
-	e := enricher.New(reg, pp, 2)
+	e := enricher.New(reg, pp, 2, telemetry.InitNoop())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	go e.Run(ctx, in, out)
 
-	in <- types.ChainEvent{
+	in <- pipeline.NewTraced(context.Background(), types.ChainEvent{
 		Chain:           types.ChainEthereum,
 		TxHash:          "0xTx789",
 		EventType:       types.EventBridgeDeposit,
 		Token:           "USDC",
 		Amount:          "1000000",
 		ContractAddress: "0xBridge",
-	}
+	})
 	close(in)
 
 	result := <-out
-	assert.Equal(t, "USDC", result.Token)
+	assert.Equal(t, "USDC", result.Value.Token)
 }

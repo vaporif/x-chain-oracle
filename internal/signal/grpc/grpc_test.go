@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 
 	grpcemitter "github.com/vaporif/x-chain-oracle/internal/signal/grpc"
+	"github.com/vaporif/x-chain-oracle/internal/telemetry"
 	"github.com/vaporif/x-chain-oracle/internal/types"
 	pb "github.com/vaporif/x-chain-oracle/proto"
 )
@@ -23,7 +24,7 @@ const bufSize = 1024 * 1024
 func setupServer(t *testing.T) (*grpcemitter.Emitter, pb.OracleServiceClient, func()) {
 	t.Helper()
 	lis := bufconn.Listen(bufSize)
-	emitter := grpcemitter.NewEmitter(50051, 64, nil)
+	emitter := grpcemitter.NewEmitter(50051, 64, nil, telemetry.InitNoop())
 
 	srv := grpc.NewServer()
 	pb.RegisterOracleServiceServer(srv, emitter)

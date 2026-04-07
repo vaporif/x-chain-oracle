@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -18,10 +19,12 @@ import (
 	"github.com/vaporif/x-chain-oracle/internal/engine"
 	"github.com/vaporif/x-chain-oracle/internal/enricher"
 	"github.com/vaporif/x-chain-oracle/internal/normalizer"
+	"github.com/vaporif/x-chain-oracle/internal/pipeline"
 	"github.com/vaporif/x-chain-oracle/internal/price/chainlink"
 	"github.com/vaporif/x-chain-oracle/internal/registry"
 	grpcemitter "github.com/vaporif/x-chain-oracle/internal/signal/grpc"
 	"github.com/vaporif/x-chain-oracle/internal/status"
+	"github.com/vaporif/x-chain-oracle/internal/telemetry"
 	"github.com/vaporif/x-chain-oracle/internal/types"
 )
 
@@ -50,6 +53,18 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
+	tel, err := telemetry.Init(ctx, cfg.Telemetry)
+	if err != nil {
+		log.Fatalf("telemetry: %v", err)
+	}
+
+	opsCtx, opsCancel := context.WithCancel(context.Background())
+	if cfg.Telemetry.Enabled {
+		if _, err := tel.ServeHTTP(opsCtx); err != nil {
+			log.Fatalf("ops http: %v", err)
+		}
+	}
+
 	var httpClient *ethclient.Client
 	if ethCfg, ok := cfg.Chains["ethereum"]; ok {
 		httpURL := evm.DeriveHTTPURL(ethCfg.RPCURL)
@@ -63,16 +78,16 @@ func main() {
 	}
 
 	priceProvider := chainlink.New(cfg.Chainlink, httpClient, reg, types.ChainEthereum)
-	emitter := grpcemitter.NewEmitter(cfg.GRPC.Port, cfg.GRPC.SubscriberBufferSize, tracker)
+	emitter := grpcemitter.NewEmitter(cfg.GRPC.Port, cfg.GRPC.SubscriberBufferSize, tracker, tel)
 
-	rawEvents := make(chan types.RawEvent, cfg.Pipeline.RawEventBuffer)
-	chainEvents := make(chan types.ChainEvent, cfg.Pipeline.ChainEventBuffer)
-	enrichedEvents := make(chan types.EnrichedEvent, cfg.Pipeline.EnrichedEventBuffer)
-	signals := make(chan types.Signal, cfg.Pipeline.SignalBuffer)
+	rawEvents := make(chan pipeline.Traced[types.RawEvent], cfg.Pipeline.RawEventBuffer)
+	chainEvents := make(chan pipeline.Traced[types.ChainEvent], cfg.Pipeline.ChainEventBuffer)
+	enrichedEvents := make(chan pipeline.Traced[types.EnrichedEvent], cfg.Pipeline.EnrichedEventBuffer)
+	signals := make(chan pipeline.Traced[types.Signal], cfg.Pipeline.SignalBuffer)
 
 	var adapters []adapter.ChainAdapter
 	if _, ok := cfg.Chains["ethereum"]; ok {
-		adapters = append(adapters, evm.New(types.ChainEthereum, cfg.Chains["ethereum"], reg, nil, httpClient, tracker, cfg.Tuning))
+		adapters = append(adapters, evm.New(types.ChainEthereum, cfg.Chains["ethereum"], reg, nil, httpClient, tracker, cfg.Tuning, tel))
 	}
 
 	var wg sync.WaitGroup
@@ -101,18 +116,25 @@ func main() {
 		close(rawEvents)
 	}()
 
-	enr := enricher.New(reg, priceProvider, cfg.Enricher.Workers)
+	enr := enricher.New(reg, priceProvider, cfg.Enricher.Workers, tel)
 	eng := engine.New(rules, engine.CorrelatorConfig{
 		DefaultWindowTTL: cfg.Engine.DefaultWindowTTL,
 		PruneInterval:    cfg.Engine.PruneInterval,
 		MaxWindowSize:    cfg.Engine.MaxWindowSize,
-	})
+	}, tel)
 
 	wg.Add(4)
-	go func() { defer wg.Done(); normalizer.Run(ctx, rawEvents, chainEvents) }()
+	go func() { defer wg.Done(); normalizer.Run(ctx, tel, rawEvents, chainEvents) }()
 	go func() { defer wg.Done(); enr.Run(ctx, chainEvents, enrichedEvents) }()
 	go func() { defer wg.Done(); eng.Run(ctx, enrichedEvents, signals) }()
 	go func() { defer wg.Done(); emitter.Run(ctx, signals) }()
+
+	go tel.MonitorChannels(ctx, []telemetry.MonitoredChannel{
+		{Name: "raw_events", Len: func() int { return len(rawEvents) }, Cap: func() int { return cap(rawEvents) }},
+		{Name: "chain_events", Len: func() int { return len(chainEvents) }, Cap: func() int { return cap(chainEvents) }},
+		{Name: "enriched_events", Len: func() int { return len(enrichedEvents) }, Cap: func() int { return cap(enrichedEvents) }},
+		{Name: "signals", Len: func() int { return len(signals) }, Cap: func() int { return cap(signals) }},
+	}, 5*time.Second)
 
 	wg.Add(1)
 	go func() {
@@ -128,6 +150,15 @@ func main() {
 	logger.Info("shutting down")
 	cancel()
 	wg.Wait()
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+	if err := tel.Shutdown(shutdownCtx); err != nil {
+		logger.Error("telemetry shutdown failed", zap.Error(err))
+	}
+
+	opsCancel()
+
 	logger.Info("shutdown complete")
 }
 

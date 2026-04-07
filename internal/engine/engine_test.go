@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/vaporif/x-chain-oracle/internal/engine"
+	"github.com/vaporif/x-chain-oracle/internal/telemetry"
 	"github.com/vaporif/x-chain-oracle/internal/types"
 )
 
@@ -34,7 +35,7 @@ func TestMatchRuleGtCondition(t *testing.T) {
 			},
 		},
 	}
-	eng := engine.New(rules, defaultCorrelatorCfg())
+	eng := engine.New(rules, defaultCorrelatorCfg(), telemetry.InitNoop())
 	event := types.EnrichedEvent{
 		ChainEvent: types.ChainEvent{
 			Chain:     types.ChainEthereum,
@@ -64,7 +65,7 @@ func TestMatchRuleNoMatch(t *testing.T) {
 			},
 		},
 	}
-	eng := engine.New(rules, defaultCorrelatorCfg())
+	eng := engine.New(rules, defaultCorrelatorCfg(), telemetry.InitNoop())
 	event := types.EnrichedEvent{
 		ChainEvent: types.ChainEvent{
 			EventType: types.EventBridgeDeposit,
@@ -87,7 +88,7 @@ func TestMatchRuleWrongTrigger(t *testing.T) {
 			},
 		},
 	}
-	eng := engine.New(rules, defaultCorrelatorCfg())
+	eng := engine.New(rules, defaultCorrelatorCfg(), telemetry.InitNoop())
 	event := types.EnrichedEvent{
 		ChainEvent: types.ChainEvent{
 			EventType: types.EventDEXSwap,
@@ -186,7 +187,7 @@ func TestConditionOperators(t *testing.T) {
 					},
 				},
 			}
-			eng := engine.New(rules, defaultCorrelatorCfg())
+			eng := engine.New(rules, defaultCorrelatorCfg(), telemetry.InitNoop())
 			signals := eng.Evaluate(tt.event)
 			if tt.expect {
 				assert.Len(t, signals, 1, "expected signal for %s", tt.name)
@@ -445,7 +446,7 @@ func TestCompareNumericNonNumericFieldReturnsNoSignal(t *testing.T) {
 			},
 		},
 	}
-	eng := engine.New(rules, defaultCorrelatorCfg())
+	eng := engine.New(rules, defaultCorrelatorCfg(), telemetry.InitNoop())
 	signals := eng.Evaluate(types.EnrichedEvent{
 		ChainEvent: types.ChainEvent{
 			EventType: types.EventBridgeDeposit,

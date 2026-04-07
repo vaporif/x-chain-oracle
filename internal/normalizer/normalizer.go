@@ -3,10 +3,17 @@ package normalizer
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/samber/mo"
-	"github.com/vaporif/x-chain-oracle/internal/types"
+	"go.opentelemetry.io/otel/attribute"
+	otelmetric "go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+
+	"github.com/vaporif/x-chain-oracle/internal/pipeline"
+	"github.com/vaporif/x-chain-oracle/internal/telemetry"
+	"github.com/vaporif/x-chain-oracle/internal/types"
 )
 
 func Normalize(raw types.RawEvent) mo.Result[types.ChainEvent] {
@@ -38,7 +45,6 @@ func normalizeEVM(event types.ChainEvent, data map[string]any, logger *zap.Logge
 		if v, ok := data["contract"].(string); ok {
 			e.ContractAddress = v
 		} else if data["contract"] != nil {
-			// TODO: replace with metrics counter
 			logger.Warn("field type assertion failed",
 				zap.String("field", "contract"),
 				zap.String("tx", e.TxHash),
@@ -67,7 +73,6 @@ func normalizeTokenEvent(event types.ChainEvent, data map[string]any, tokenKey, 
 	if v, ok := data["amount"].(string); ok {
 		event.Amount = v
 	} else if data["amount"] != nil {
-		// TODO: replace with metrics counter
 		logger.Warn("field type assertion failed",
 			zap.String("field", "amount"),
 			zap.String("tx", event.TxHash),
@@ -77,7 +82,6 @@ func normalizeTokenEvent(event types.ChainEvent, data map[string]any, tokenKey, 
 	if v, ok := data[senderKey].(string); ok {
 		event.SourceAddress = v
 	} else if data[senderKey] != nil {
-		// TODO: replace with metrics counter
 		logger.Warn("field type assertion failed",
 			zap.String("field", senderKey),
 			zap.String("tx", event.TxHash),
@@ -92,32 +96,59 @@ func normalizeTokenEvent(event types.ChainEvent, data map[string]any, tokenKey, 
 	return mo.Ok(event)
 }
 
-func Run(ctx context.Context, in <-chan types.RawEvent, out chan<- types.ChainEvent) {
+func Run(ctx context.Context, tel *telemetry.Telemetry, in <-chan pipeline.Traced[types.RawEvent], out chan<- pipeline.Traced[types.ChainEvent]) {
 	logger := zap.L().Named("normalizer")
 	defer close(out)
-	for raw := range in {
+	for traced := range in {
 		if ctx.Err() != nil {
 			return
 		}
-		event, err := Normalize(raw).Get()
+
+		tel.Metrics.EventsReceived.Add(ctx, 1,
+			otelmetric.WithAttributes(attribute.String("stage", "normalizer")))
+
+		start := time.Now()
+		result, err := processNormalize(tel, traced)
 		if err != nil {
-			// TODO: replace with metrics counter
+			tel.Metrics.EventsDropped.Add(ctx, 1,
+				otelmetric.WithAttributes(attribute.String("stage", "normalizer")))
 			logger.Warn("skipping malformed event",
-				zap.String("tx", raw.TxHash),
+				zap.String("tx", traced.Value.TxHash),
 				zap.Error(err),
 			)
 			continue
 		}
+
+		tel.Metrics.StageLatency.Record(ctx, float64(time.Since(start).Milliseconds()),
+			otelmetric.WithAttributes(attribute.String("stage", "normalizer")))
+
 		logger.Debug("event normalized",
-			zap.String("chain", string(event.Chain)),
-			zap.String("tx", event.TxHash),
-			zap.String("token", event.Token),
-			zap.String("amount", event.Amount),
+			zap.String("chain", string(result.Value.Chain)),
+			zap.String("tx", result.Value.TxHash),
+			zap.String("token", result.Value.Token),
+			zap.String("amount", result.Value.Amount),
 		)
+
 		select {
-		case out <- event:
+		case out <- result:
+			tel.Metrics.EventsEmitted.Add(ctx, 1,
+				otelmetric.WithAttributes(attribute.String("stage", "normalizer")))
 		case <-ctx.Done():
 			return
 		}
 	}
+}
+
+func processNormalize(tel *telemetry.Telemetry, traced pipeline.Traced[types.RawEvent]) (pipeline.Traced[types.ChainEvent], error) {
+	ctx := traced.Ctx
+	if tel.Config.Tracing.Stages.Normalizer {
+		var span trace.Span
+		ctx, span = tel.Tracer.Start(traced.Ctx, "pipeline.normalizer")
+		defer span.End()
+	}
+	event, err := Normalize(traced.Value).Get()
+	if err != nil {
+		return pipeline.Traced[types.ChainEvent]{}, err
+	}
+	return pipeline.Traced[types.ChainEvent]{Value: event, Ctx: ctx, StartedAt: traced.StartedAt}, nil
 }
