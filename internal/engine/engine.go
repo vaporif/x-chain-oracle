@@ -25,9 +25,16 @@ type Engine struct {
 }
 
 func New(rules *RulesConfig, cfg CorrelatorConfig, tel *telemetry.Telemetry) *Engine {
+	onDrop := func(count int) {
+		tel.Metrics.EventsDropped.Add(context.Background(), int64(count),
+			otelmetric.WithAttributes(
+				attribute.String("stage", "engine"),
+				attribute.String("reason", "window_overflow"),
+			))
+	}
 	return &Engine{
 		rules:      rules,
-		correlator: NewCorrelator(rules.Correlations, cfg),
+		correlator: NewCorrelator(rules.Correlations, cfg, onDrop),
 		tel:        tel,
 	}
 }
@@ -198,7 +205,7 @@ func (e *Engine) Run(ctx context.Context, in <-chan pipeline.Traced[types.Enrich
 			}
 		}
 
-		for _, sig := range e.correlateWithSpan(traced.Value) {
+		for _, sig := range e.correlateWithSpan(traced.Ctx, traced.Value) {
 			zap.L().Named("engine").Debug("correlation matched",
 				zap.String("signal_type", sig.Value.SignalType),
 			)
@@ -240,23 +247,23 @@ func (e *Engine) evaluateWithSpan(traced pipeline.Traced[types.EnrichedEvent]) [
 	return result
 }
 
-func (e *Engine) correlateWithSpan(event types.EnrichedEvent) []pipeline.Traced[types.Signal] {
+func (e *Engine) correlateWithSpan(parentCtx context.Context, event types.EnrichedEvent) []pipeline.Traced[types.Signal] {
 	signals := e.correlator.Process(event)
 	if len(signals) == 0 {
 		return nil
 	}
 	var result []pipeline.Traced[types.Signal]
 	for _, sig := range signals {
-		result = append(result, e.wrapCorrelationSignal(sig))
+		result = append(result, e.wrapCorrelationSignal(parentCtx, sig))
 	}
 	return result
 }
 
-func (e *Engine) wrapCorrelationSignal(sig types.Signal) pipeline.Traced[types.Signal] {
-	ctx := context.Background()
+func (e *Engine) wrapCorrelationSignal(parentCtx context.Context, sig types.Signal) pipeline.Traced[types.Signal] {
+	ctx := parentCtx
 	if e.tel.Config.Tracing.Stages.Engine {
 		var span trace.Span
-		ctx, span = e.tel.Tracer.Start(ctx, "pipeline.engine.correlate")
+		ctx, span = e.tel.Tracer.Start(parentCtx, "pipeline.engine.correlate")
 		defer span.End()
 	}
 	return pipeline.Traced[types.Signal]{Value: sig, Ctx: ctx, StartedAt: time.Now()}

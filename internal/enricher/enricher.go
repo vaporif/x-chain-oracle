@@ -116,7 +116,9 @@ func (e *Enricher) enrich(ctx context.Context, ce types.ChainEvent) types.Enrich
 	return enriched
 }
 
+var noopTel = telemetry.InitNoop()
+
 func Enrich(ctx context.Context, ce types.ChainEvent, reg *registry.Registry, pp price.Provider) types.EnrichedEvent {
-	e := &Enricher{reg: reg, pp: pp, tel: telemetry.InitNoop()}
+	e := &Enricher{reg: reg, pp: pp, tel: noopTel}
 	return e.enrich(ctx, ce)
 }

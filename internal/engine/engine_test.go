@@ -208,7 +208,7 @@ func TestCorrelationApprovalThenBridge(t *testing.T) {
 			Signal:     "high_confidence_bridge",
 			Confidence: 0.95,
 		},
-	}, defaultCorrelatorCfg())
+	}, defaultCorrelatorCfg(), nil)
 
 	now := time.Now().Unix()
 
@@ -248,7 +248,7 @@ func TestCorrelationWindowExpiry(t *testing.T) {
 			Signal:     "high_confidence_bridge",
 			Confidence: 0.95,
 		},
-	}, defaultCorrelatorCfg())
+	}, defaultCorrelatorCfg(), nil)
 
 	now := time.Now().Unix()
 
@@ -282,7 +282,7 @@ func TestCorrelationFieldMismatch(t *testing.T) {
 			Signal:     "high_confidence_bridge",
 			Confidence: 0.95,
 		},
-	}, defaultCorrelatorCfg())
+	}, defaultCorrelatorCfg(), nil)
 
 	now := time.Now().Unix()
 
@@ -317,7 +317,7 @@ func TestCorrelationBurstDetection(t *testing.T) {
 			Confidence:    0.7,
 			MinFirstCount: 3,
 		},
-	}, defaultCorrelatorCfg())
+	}, defaultCorrelatorCfg(), nil)
 
 	now := time.Now().Unix()
 	mint := "So11111111111111111111111111111111111111112"
@@ -355,7 +355,7 @@ func TestCorrelationBurstNotEnough(t *testing.T) {
 			Confidence:    0.7,
 			MinFirstCount: 3,
 		},
-	}, defaultCorrelatorCfg())
+	}, defaultCorrelatorCfg(), nil)
 
 	now := time.Now().Unix()
 

@@ -25,6 +25,7 @@ type EventWindow struct {
 	mu      sync.Mutex
 	entries []windowEntry
 	maxSize int
+	onDrop  func(count int)
 }
 
 func (w *EventWindow) Add(event types.EnrichedEvent, ttl time.Duration) {
@@ -36,7 +37,9 @@ func (w *EventWindow) Add(event types.EnrichedEvent, ttl time.Duration) {
 	})
 	if w.maxSize > 0 && len(w.entries) > w.maxSize {
 		drop := len(w.entries) - w.maxSize
-		// TODO: replace with metrics counter
+		if w.onDrop != nil {
+			w.onDrop(drop)
+		}
 		zap.L().Named("engine.correlation").Warn("window size cap reached, dropping oldest entries",
 			zap.Int("dropped", drop),
 			zap.Int("max_size", w.maxSize),
@@ -97,7 +100,7 @@ type Correlator struct {
 	cfg          CorrelatorConfig
 }
 
-func NewCorrelator(correlations []Correlation, cfg CorrelatorConfig) *Correlator {
+func NewCorrelator(correlations []Correlation, cfg CorrelatorConfig, onDrop func(int)) *Correlator {
 	c := &Correlator{
 		windows:    make(map[string]*EventWindow),
 		windowTTLs: make(map[string]time.Duration),
@@ -111,7 +114,7 @@ func NewCorrelator(correlations []Correlation, cfg CorrelatorConfig) *Correlator
 		correlations[i].windowDuration = d
 		for _, evtType := range corr.Sequence {
 			if _, ok := c.windows[evtType]; !ok {
-				c.windows[evtType] = &EventWindow{maxSize: cfg.MaxWindowSize}
+				c.windows[evtType] = &EventWindow{maxSize: cfg.MaxWindowSize, onDrop: onDrop}
 			}
 			if d > c.windowTTLs[evtType] {
 				c.windowTTLs[evtType] = d
