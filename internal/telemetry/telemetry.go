@@ -48,7 +48,6 @@ func Init(ctx context.Context, cfg config.TelemetryConfig) (*Telemetry, error) {
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 
-	// Trace provider
 	var tp *sdktrace.TracerProvider
 	if cfg.OTLPEndpoint != "" {
 		traceExporter, err := otlptracegrpc.New(ctx,
@@ -71,7 +70,7 @@ func Init(ctx context.Context, cfg config.TelemetryConfig) (*Telemetry, error) {
 		)
 	}
 
-	// Metric provider — dual readers: OTLP push + Prometheus pull
+	// Dual metric readers: OTLP push + Prometheus pull
 	promExporter, err := prometheus.New()
 	if err != nil {
 		return nil, err

@@ -110,7 +110,6 @@ func TestTraceHierarchy(t *testing.T) {
 	go enr.Run(ctx, chainCh, enrichedCh)
 	go eng.Run(ctx, enrichedCh, signalCh)
 
-	// Simulate adapter creating a traced event with a span
 	_, adapterSpan := tel.Tracer.Start(ctx, "pipeline.adapter")
 	tracedRaw := pipeline.Traced[types.RawEvent]{
 		Value: types.RawEvent{
@@ -148,7 +147,6 @@ func TestTraceHierarchy(t *testing.T) {
 	assert.True(t, spanNames["pipeline.enricher"], "missing enricher span")
 	assert.True(t, spanNames["pipeline.engine.evaluate"], "missing engine span")
 
-	// All spans should share the same trace ID
 	traceID := spans[0].SpanContext.TraceID()
 	for _, s := range spans {
 		assert.Equal(t, traceID, s.SpanContext.TraceID(), "span %s has different trace ID", s.Name)
