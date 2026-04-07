@@ -34,9 +34,11 @@ import (
 	"github.com/vaporif/x-chain-oracle/internal/engine"
 	"github.com/vaporif/x-chain-oracle/internal/enricher"
 	"github.com/vaporif/x-chain-oracle/internal/normalizer"
+	"github.com/vaporif/x-chain-oracle/internal/pipeline"
 	"github.com/vaporif/x-chain-oracle/internal/price/chainlink"
 	"github.com/vaporif/x-chain-oracle/internal/registry"
 	grpcemitter "github.com/vaporif/x-chain-oracle/internal/signal/grpc"
+	"github.com/vaporif/x-chain-oracle/internal/telemetry"
 	otypes "github.com/vaporif/x-chain-oracle/internal/types"
 	pb "github.com/vaporif/x-chain-oracle/proto"
 )
@@ -238,21 +240,22 @@ func TestE2EPipeline(t *testing.T) {
 	defer client.Close()
 
 	// Build pipeline components
+	tel := telemetry.InitNoop()
 	priceProvider := chainlink.New(cfg.Chainlink, client, reg, otypes.ChainEthereum)
-	emitter := grpcemitter.NewEmitter(grpcPort, cfg.GRPC.SubscriberBufferSize, nil)
+	emitter := grpcemitter.NewEmitter(grpcPort, cfg.GRPC.SubscriberBufferSize, nil, tel)
 
-	rawEvents := make(chan otypes.RawEvent, 256)
-	chainEvents := make(chan otypes.ChainEvent, 256)
-	enrichedEvents := make(chan otypes.EnrichedEvent, 64)
-	signals := make(chan otypes.Signal, 32)
+	rawEvents := make(chan pipeline.Traced[otypes.RawEvent], 256)
+	chainEvents := make(chan pipeline.Traced[otypes.ChainEvent], 256)
+	enrichedEvents := make(chan pipeline.Traced[otypes.EnrichedEvent], 64)
+	signals := make(chan pipeline.Traced[otypes.Signal], 32)
 
-	adapter := evm.New(otypes.ChainEthereum, cfg.Chains["ethereum"], reg, nil, client, nil, cfg.Tuning)
-	enr := enricher.New(reg, priceProvider, cfg.Enricher.Workers)
+	adapter := evm.New(otypes.ChainEthereum, cfg.Chains["ethereum"], reg, nil, client, nil, cfg.Tuning, tel)
+	enr := enricher.New(reg, priceProvider, cfg.Enricher.Workers, tel)
 	eng := engine.New(rules, engine.CorrelatorConfig{
 		DefaultWindowTTL: cfg.Engine.DefaultWindowTTL,
 		PruneInterval:    cfg.Engine.PruneInterval,
 		MaxWindowSize:    cfg.Engine.MaxWindowSize,
-	})
+	}, tel)
 
 	// Start pipeline goroutines
 	var wg sync.WaitGroup
@@ -273,7 +276,7 @@ func TestE2EPipeline(t *testing.T) {
 	}()
 
 	wg.Add(4)
-	go func() { defer wg.Done(); normalizer.Run(ctx, rawEvents, chainEvents) }()
+	go func() { defer wg.Done(); normalizer.Run(ctx, tel, rawEvents, chainEvents) }()
 	go func() { defer wg.Done(); enr.Run(ctx, chainEvents, enrichedEvents) }()
 	go func() { defer wg.Done(); eng.Run(ctx, enrichedEvents, signals) }()
 	go func() { defer wg.Done(); emitter.Run(ctx, signals) }()

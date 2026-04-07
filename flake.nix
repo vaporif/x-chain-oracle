@@ -25,7 +25,7 @@
         pname = "x-chain-oracle";
         version = "0.0.1";
         src = self;
-        vendorHash = "sha256-0yGvqdEBjqvgRyPDskRRoFymbknfSyairPQXpArbiM0=";
+        vendorHash = "sha256-JuIqnS2JBUn/ydVk+8KWGnQ38U1GVLNDuAdWORmPNmQ=";
         env.CGO_ENABLED = 1;
       };
     in {
