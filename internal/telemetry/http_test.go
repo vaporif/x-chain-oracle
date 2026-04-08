@@ -36,7 +36,7 @@ func TestHTTPHealthz(t *testing.T) {
 
 	tel, err := telemetry.Init(context.Background(), cfg)
 	require.NoError(t, err)
-	defer tel.Shutdown(context.Background())
+	defer func() { _ = tel.Shutdown(context.Background()) }()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -46,7 +46,7 @@ func TestHTTPHealthz(t *testing.T) {
 
 	resp, err := http.Get(fmt.Sprintf("http://%s/healthz", addr))
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	var body map[string]any
@@ -76,7 +76,7 @@ func TestHTTPMetrics(t *testing.T) {
 
 	tel, err := telemetry.Init(context.Background(), cfg)
 	require.NoError(t, err)
-	defer tel.Shutdown(context.Background())
+	defer func() { _ = tel.Shutdown(context.Background()) }()
 
 	tel.Metrics.EventsReceived.Add(context.Background(), 1)
 
@@ -88,7 +88,7 @@ func TestHTTPMetrics(t *testing.T) {
 
 	resp, err := http.Get(fmt.Sprintf("http://%s/metrics", addr))
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	body, err := io.ReadAll(resp.Body)

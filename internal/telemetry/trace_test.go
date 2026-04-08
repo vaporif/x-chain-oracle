@@ -134,7 +134,7 @@ func TestTraceHierarchy(t *testing.T) {
 		t.Fatal("timed out waiting for signal")
 	}
 
-	tp.ForceFlush(ctx)
+	_ = tp.ForceFlush(ctx)
 
 	spans := exporter.GetSpans()
 	spanNames := make(map[string]bool)

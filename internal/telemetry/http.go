@@ -38,7 +38,7 @@ func (t *Telemetry) ServeHTTP(ctx context.Context) (string, error) {
 	server := &http.Server{Handler: mux}
 	go func() {
 		<-ctx.Done()
-		server.Close()
+		_ = server.Close()
 	}()
 	go func() {
 		if err := server.Serve(ln); err != nil && err != http.ErrServerClosed {
