@@ -44,3 +44,29 @@ backoff.max_retries = 20
 [tuning]
 block_cache_size = 100
 log_channel_buffer = 256
+
+[telemetry]
+enabled = true
+otlp_endpoint = "localhost:4317"
+otlp_insecure = true
+http_port = 9090
+service_name = "x-chain-oracle"
+service_version = "0.1.0"
+environment = "development"
+
+[telemetry.tracing]
+sample_ratio = 1.0
+batch_timeout = "5s"
+
+[telemetry.tracing.stages]
+adapter = true
+normalizer = true
+enricher = true
+engine = true
+emitter = true
+
+[telemetry.metrics]
+export_interval = "10s"
+
+[telemetry.metrics.histogram_buckets]
+latency_ms = [1, 5, 10, 25, 50, 100, 250, 500, 1000, 5000]

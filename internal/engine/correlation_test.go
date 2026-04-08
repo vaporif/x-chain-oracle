@@ -25,7 +25,7 @@ func TestMatchedEntriesConsumed(t *testing.T) {
 		DefaultWindowTTL: 30 * time.Second,
 		PruneInterval:    5 * time.Second,
 		MaxWindowSize:    10000,
-	})
+	}, nil)
 
 	base := types.EnrichedEvent{
 		ChainEvent: types.ChainEvent{
@@ -71,7 +71,7 @@ func TestWindowCapDropsOldest(t *testing.T) {
 		DefaultWindowTTL: 30 * time.Second,
 		PruneInterval:    5 * time.Second,
 		MaxWindowSize:    3,
-	})
+	}, nil)
 
 	for i := 0; i < 5; i++ {
 		corr.Process(types.EnrichedEvent{

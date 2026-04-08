@@ -26,7 +26,9 @@ import (
 	"github.com/vaporif/x-chain-oracle/internal/engine"
 	"github.com/vaporif/x-chain-oracle/internal/enricher"
 	"github.com/vaporif/x-chain-oracle/internal/normalizer"
+	"github.com/vaporif/x-chain-oracle/internal/pipeline"
 	"github.com/vaporif/x-chain-oracle/internal/registry"
+	"github.com/vaporif/x-chain-oracle/internal/telemetry"
 	"github.com/vaporif/x-chain-oracle/internal/types"
 )
 
@@ -85,26 +87,28 @@ func TestFullPipelineRawEventToSignal(t *testing.T) {
 		},
 	}
 
-	rawEvents := make(chan types.RawEvent, 10)
-	chainEvents := make(chan types.ChainEvent, 10)
-	enrichedEvents := make(chan types.EnrichedEvent, 10)
-	signals := make(chan types.Signal, 10)
+	tel := telemetry.InitNoop()
+
+	rawEvents := make(chan pipeline.Traced[types.RawEvent], 10)
+	chainEvents := make(chan pipeline.Traced[types.ChainEvent], 10)
+	enrichedEvents := make(chan pipeline.Traced[types.EnrichedEvent], 10)
+	signals := make(chan pipeline.Traced[types.Signal], 10)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	enr := enricher.New(reg, pp, 2)
+	enr := enricher.New(reg, pp, 2, tel)
 	eng := engine.New(rules, engine.CorrelatorConfig{
 		DefaultWindowTTL: 30 * time.Second,
 		PruneInterval:    5 * time.Second,
 		MaxWindowSize:    10000,
-	})
+	}, tel)
 
-	go normalizer.Run(ctx, rawEvents, chainEvents)
+	go normalizer.Run(ctx, tel, rawEvents, chainEvents)
 	go enr.Run(ctx, chainEvents, enrichedEvents)
 	go eng.Run(ctx, enrichedEvents, signals)
 
-	rawEvents <- types.RawEvent{
+	rawEvents <- pipeline.NewTraced(ctx, types.RawEvent{
 		Chain:     types.ChainEthereum,
 		Block:     18000000,
 		TxHash:    "0xTx999",
@@ -117,15 +121,15 @@ func TestFullPipelineRawEventToSignal(t *testing.T) {
 			"contract":     "0xBridge",
 			"target_chain": "solana",
 		},
-	}
+	})
 	close(rawEvents)
 
 	select {
-	case sig, ok := <-signals:
+	case traced, ok := <-signals:
 		require.True(t, ok, "signals channel closed without producing a signal")
-		assert.Equal(t, "liquidity_needed", sig.SignalType)
-		assert.Equal(t, types.ChainEthereum, sig.SourceChain)
-		assert.Equal(t, 0.8, sig.Confidence)
+		assert.Equal(t, "liquidity_needed", traced.Value.SignalType)
+		assert.Equal(t, types.ChainEthereum, traced.Value.SourceChain)
+		assert.Equal(t, 0.8, traced.Value.Confidence)
 	case <-ctx.Done():
 		t.Fatal("timed out waiting for signal")
 	}
@@ -147,26 +151,28 @@ func TestPipelineNoMatchProducesNoSignal(t *testing.T) {
 		},
 	}
 
-	rawEvents := make(chan types.RawEvent, 10)
-	chainEvents := make(chan types.ChainEvent, 10)
-	enrichedEvents := make(chan types.EnrichedEvent, 10)
-	signals := make(chan types.Signal, 10)
+	tel := telemetry.InitNoop()
+
+	rawEvents := make(chan pipeline.Traced[types.RawEvent], 10)
+	chainEvents := make(chan pipeline.Traced[types.ChainEvent], 10)
+	enrichedEvents := make(chan pipeline.Traced[types.EnrichedEvent], 10)
+	signals := make(chan pipeline.Traced[types.Signal], 10)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	enr := enricher.New(reg, pp, 2)
+	enr := enricher.New(reg, pp, 2, tel)
 	eng := engine.New(rules, engine.CorrelatorConfig{
 		DefaultWindowTTL: 30 * time.Second,
 		PruneInterval:    5 * time.Second,
 		MaxWindowSize:    10000,
-	})
+	}, tel)
 
-	go normalizer.Run(ctx, rawEvents, chainEvents)
+	go normalizer.Run(ctx, tel, rawEvents, chainEvents)
 	go enr.Run(ctx, chainEvents, enrichedEvents)
 	go eng.Run(ctx, enrichedEvents, signals)
 
-	rawEvents <- types.RawEvent{
+	rawEvents <- pipeline.NewTraced(ctx, types.RawEvent{
 		Chain:     types.ChainEthereum,
 		Block:     18000000,
 		TxHash:    "0xTx000",
@@ -179,19 +185,17 @@ func TestPipelineNoMatchProducesNoSignal(t *testing.T) {
 			"contract":     "0xBridge",
 			"target_chain": "solana",
 		},
-	}
+	})
 	close(rawEvents)
 
 	time.Sleep(500 * time.Millisecond)
 
 	select {
-	case sig, ok := <-signals:
+	case traced, ok := <-signals:
 		if ok {
-			t.Fatalf("expected no signal, got: %+v", sig)
+			t.Fatalf("expected no signal, got: %+v", traced.Value)
 		}
-		// channel closed without signal — correct
 	default:
-		// no signal available — correct
 	}
 }
 
@@ -293,12 +297,13 @@ func TestWormholeBridgeDepositEndToEnd(t *testing.T) {
 		EventBuffer: 256,
 		Backoff:     config.BackoffConfig{Initial: time.Second, Max: 30 * time.Second, MaxRetries: 10},
 	}
-	a := evm.New(types.ChainEthereum, cfg, reg, strategy, nil, nil, config.DefaultTuningConfig())
+	tel := telemetry.InitNoop()
+	a := evm.New(types.ChainEthereum, cfg, reg, strategy, nil, nil, config.DefaultTuningConfig(), tel)
 
-	rawEvents := make(chan types.RawEvent, 10)
-	chainEvents := make(chan types.ChainEvent, 10)
-	enrichedEvents := make(chan types.EnrichedEvent, 10)
-	signals := make(chan types.Signal, 10)
+	rawEvents := make(chan pipeline.Traced[types.RawEvent], 10)
+	chainEvents := make(chan pipeline.Traced[types.ChainEvent], 10)
+	enrichedEvents := make(chan pipeline.Traced[types.EnrichedEvent], 10)
+	signals := make(chan pipeline.Traced[types.Signal], 10)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -317,26 +322,26 @@ func TestWormholeBridgeDepositEndToEnd(t *testing.T) {
 		close(rawEvents)
 	}()
 
-	enr := enricher.New(reg, pp, 2)
+	enr := enricher.New(reg, pp, 2, tel)
 	eng := engine.New(rules, engine.CorrelatorConfig{
 		DefaultWindowTTL: 30 * time.Second,
 		PruneInterval:    5 * time.Second,
 		MaxWindowSize:    10000,
-	})
+	}, tel)
 
-	go normalizer.Run(ctx, rawEvents, chainEvents)
+	go normalizer.Run(ctx, tel, rawEvents, chainEvents)
 	go enr.Run(ctx, chainEvents, enrichedEvents)
 	go eng.Run(ctx, enrichedEvents, signals)
 
 	select {
-	case sig, ok := <-signals:
+	case traced, ok := <-signals:
 		require.True(t, ok)
-		assert.Equal(t, "liquidity_needed", sig.SignalType)
-		assert.Equal(t, types.ChainEthereum, sig.SourceChain)
-		destChain, hasDest := sig.DestinationChain.Get()
+		assert.Equal(t, "liquidity_needed", traced.Value.SignalType)
+		assert.Equal(t, types.ChainEthereum, traced.Value.SourceChain)
+		destChain, hasDest := traced.Value.DestinationChain.Get()
 		assert.True(t, hasDest)
 		assert.Equal(t, types.ChainSolana, destChain)
-		assert.Equal(t, 0.8, sig.Confidence)
+		assert.Equal(t, 0.8, traced.Value.Confidence)
 	case <-ctx.Done():
 		t.Fatal("timed out waiting for signal")
 	}
@@ -347,23 +352,25 @@ func TestGracefulShutdown(t *testing.T) {
 	pp := &mockPrice{prices: map[string]float64{}}
 	rules := &engine.RulesConfig{}
 
-	rawEvents := make(chan types.RawEvent, 10)
-	chainEvents := make(chan types.ChainEvent, 10)
-	enrichedEvents := make(chan types.EnrichedEvent, 10)
-	signals := make(chan types.Signal, 10)
+	tel := telemetry.InitNoop()
+
+	rawEvents := make(chan pipeline.Traced[types.RawEvent], 10)
+	chainEvents := make(chan pipeline.Traced[types.ChainEvent], 10)
+	enrichedEvents := make(chan pipeline.Traced[types.EnrichedEvent], 10)
+	signals := make(chan pipeline.Traced[types.Signal], 10)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	enr := enricher.New(reg, pp, 2)
+	enr := enricher.New(reg, pp, 2, tel)
 	eng := engine.New(rules, engine.CorrelatorConfig{
 		DefaultWindowTTL: 30 * time.Second,
 		PruneInterval:    5 * time.Second,
 		MaxWindowSize:    10000,
-	})
+	}, tel)
 
 	var wg sync.WaitGroup
 	wg.Add(3)
-	go func() { defer wg.Done(); normalizer.Run(ctx, rawEvents, chainEvents) }()
+	go func() { defer wg.Done(); normalizer.Run(ctx, tel, rawEvents, chainEvents) }()
 	go func() { defer wg.Done(); enr.Run(ctx, chainEvents, enrichedEvents) }()
 	go func() { defer wg.Done(); eng.Run(ctx, enrichedEvents, signals) }()
 

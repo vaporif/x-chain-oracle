@@ -8,20 +8,34 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/samber/mo"
+	"go.opentelemetry.io/otel/attribute"
+	otelmetric "go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/vaporif/x-chain-oracle/internal/pipeline"
+	"github.com/vaporif/x-chain-oracle/internal/telemetry"
 	"github.com/vaporif/x-chain-oracle/internal/types"
 )
 
 type Engine struct {
 	rules      *RulesConfig
 	correlator *Correlator
+	tel        *telemetry.Telemetry
 }
 
-func New(rules *RulesConfig, cfg CorrelatorConfig) *Engine {
+func New(rules *RulesConfig, cfg CorrelatorConfig, tel *telemetry.Telemetry) *Engine {
+	onDrop := func(count int) {
+		tel.Metrics.EventsDropped.Add(context.Background(), int64(count),
+			otelmetric.WithAttributes(
+				attribute.String("stage", "engine"),
+				attribute.String("reason", "window_overflow"),
+			))
+	}
 	return &Engine{
 		rules:      rules,
-		correlator: NewCorrelator(rules.Correlations, cfg),
+		correlator: NewCorrelator(rules.Correlations, cfg, onDrop),
+		tel:        tel,
 	}
 }
 
@@ -164,34 +178,93 @@ func buildMetadata(fields []string, event types.EnrichedEvent) map[string]string
 	return meta
 }
 
-func (e *Engine) Run(ctx context.Context, in <-chan types.EnrichedEvent, out chan<- types.Signal) {
+func (e *Engine) Run(ctx context.Context, in <-chan pipeline.Traced[types.EnrichedEvent], out chan<- pipeline.Traced[types.Signal]) {
 	defer close(out)
 
 	done := make(chan struct{})
 	defer close(done)
 	e.correlator.StartPruner(done)
 
-	for event := range in {
+	for traced := range in {
 		if ctx.Err() != nil {
 			return
 		}
-		for _, sig := range e.Evaluate(event) {
+
+		e.tel.Metrics.EventsReceived.Add(ctx, 1,
+			telemetry.StageAttr(telemetry.StageEngine))
+
+		start := time.Now()
+
+		for _, sig := range e.evaluateWithSpan(traced) {
 			select {
 			case out <- sig:
+				e.tel.Metrics.EventsEmitted.Add(ctx, 1,
+					telemetry.StageAttr(telemetry.StageEngine))
 			case <-ctx.Done():
 				return
 			}
 		}
-		corrSignals := e.correlator.Process(event)
-		for _, sig := range corrSignals {
+
+		for _, sig := range e.correlateWithSpan(traced.Ctx, traced.Value) {
 			zap.L().Named("engine").Debug("correlation matched",
-				zap.String("signal_type", sig.SignalType),
+				zap.String("signal_type", sig.Value.SignalType),
 			)
 			select {
 			case out <- sig:
+				e.tel.Metrics.EventsEmitted.Add(ctx, 1,
+					telemetry.StageAttr(telemetry.StageEngine))
 			case <-ctx.Done():
 				return
 			}
 		}
+
+		e.tel.Metrics.StageLatency.Record(ctx, float64(time.Since(start).Milliseconds()),
+			telemetry.StageAttr(telemetry.StageEngine))
+		e.tel.Metrics.CorrelationsOpen.Record(ctx, e.correlator.OpenEntries())
 	}
+}
+
+func (e *Engine) evaluateWithSpan(traced pipeline.Traced[types.EnrichedEvent]) []pipeline.Traced[types.Signal] {
+	ctx := traced.Ctx
+	var span trace.Span
+	if e.tel.Config.Tracing.Stages.Engine {
+		ctx, span = e.tel.Tracer.Start(traced.Ctx, "pipeline.engine.evaluate")
+		defer span.End()
+	}
+
+	signals := e.Evaluate(traced.Value)
+
+	e.tel.Metrics.RulesEvaluated.Add(ctx, int64(len(e.rules.Rules)))
+	if span != nil {
+		span.SetAttributes(attribute.Bool("matched", len(signals) > 0))
+	}
+
+	var result []pipeline.Traced[types.Signal]
+	for _, sig := range signals {
+		e.tel.Metrics.RulesMatched.Add(ctx, 1)
+		result = append(result, pipeline.Traced[types.Signal]{Value: sig, Ctx: ctx, StartedAt: traced.StartedAt})
+	}
+	return result
+}
+
+func (e *Engine) correlateWithSpan(parentCtx context.Context, event types.EnrichedEvent) []pipeline.Traced[types.Signal] {
+	signals := e.correlator.Process(event)
+	if len(signals) == 0 {
+		return nil
+	}
+	var result []pipeline.Traced[types.Signal]
+	for _, sig := range signals {
+		result = append(result, e.wrapCorrelationSignal(parentCtx, sig))
+	}
+	return result
+}
+
+func (e *Engine) wrapCorrelationSignal(parentCtx context.Context, sig types.Signal) pipeline.Traced[types.Signal] {
+	ctx := parentCtx
+	if e.tel.Config.Tracing.Stages.Engine {
+		var span trace.Span
+		ctx, span = e.tel.Tracer.Start(parentCtx, "pipeline.engine.correlate")
+		defer span.End()
+	}
+	return pipeline.NewTraced(ctx, sig)
 }

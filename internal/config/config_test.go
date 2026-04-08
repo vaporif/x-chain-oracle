@@ -271,3 +271,86 @@ func TestEnvVarOverrideStaleness(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 4*time.Hour, cfg.Chainlink.StalenessThreshold)
 }
+
+func TestTelemetryConfigDefaults(t *testing.T) {
+	toml := `
+[grpc]
+port = 50051
+
+[enricher]
+workers = 4
+
+[chainlink]
+cache_ttl = "30s"
+
+[chains.ethereum]
+rpc_url = "wss://eth.example.com"
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	require.NoError(t, os.WriteFile(path, []byte(toml), 0644))
+
+	cfg, err := config.Load(path)
+	require.NoError(t, err)
+	assert.True(t, cfg.Telemetry.Enabled)
+	assert.Equal(t, "localhost:4317", cfg.Telemetry.OTLPEndpoint)
+	assert.Equal(t, 9090, cfg.Telemetry.HTTPPort)
+	assert.Equal(t, "x-chain-oracle", cfg.Telemetry.ServiceName)
+	assert.Equal(t, 1.0, cfg.Telemetry.Tracing.SampleRatio)
+	assert.Equal(t, 5*time.Second, cfg.Telemetry.Tracing.BatchTimeout)
+	assert.True(t, cfg.Telemetry.Tracing.Stages.Adapter)
+	assert.True(t, cfg.Telemetry.Tracing.Stages.Normalizer)
+	assert.True(t, cfg.Telemetry.Tracing.Stages.Enricher)
+	assert.True(t, cfg.Telemetry.Tracing.Stages.Engine)
+	assert.True(t, cfg.Telemetry.Tracing.Stages.Emitter)
+	assert.Equal(t, 10*time.Second, cfg.Telemetry.Metrics.ExportInterval)
+	assert.Equal(t, []float64{1, 5, 10, 25, 50, 100, 250, 500, 1000, 5000}, cfg.Telemetry.Metrics.HistogramBuckets.LatencyMs)
+}
+
+func TestTelemetryConfigValidation(t *testing.T) {
+	base := `
+[grpc]
+port = 50051
+
+[enricher]
+workers = 4
+
+[chainlink]
+cache_ttl = "30s"
+
+[chains.ethereum]
+rpc_url = "wss://eth.example.com"
+`
+	tests := []struct {
+		name    string
+		extra   string
+		wantErr string
+	}{
+		{
+			name:    "http_port conflicts with grpc port",
+			extra:   "\n[telemetry]\nenabled = true\nhttp_port = 50051\n",
+			wantErr: "telemetry.http_port must differ from grpc.port",
+		},
+		{
+			name:    "http_port out of range",
+			extra:   "\n[telemetry]\nenabled = true\nhttp_port = 99999\n",
+			wantErr: "telemetry.http_port must be 1-65535",
+		},
+		{
+			name:    "sample_ratio too high",
+			extra:   "\n[telemetry]\n[telemetry.tracing]\nsample_ratio = 1.5\n",
+			wantErr: "telemetry.tracing.sample_ratio must be 0.0-1.0",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "config.toml")
+			require.NoError(t, os.WriteFile(path, []byte(base+tt.extra), 0644))
+			_, err := config.Load(path)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
